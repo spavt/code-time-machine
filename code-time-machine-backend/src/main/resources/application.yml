@@ -1,0 +1,60 @@
+# =====================================================
+# AI代码时光机 - 应用配置
+# =====================================================
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: code-time-machine
+  
+  # 数据源配置
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/code_time_machine?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+  
+  # Jackson配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+# MyBatis Plus配置
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.codetimemachine.entity
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 应用自定义配置
+app:
+  # Git仓库存储路径
+  repo-storage-path: ./repos
+  # 最大仓库大小 (500MB)
+  max-repo-size: 524288000
+  # 最大分析提交数
+  max-commits: 1000
+  # AI配置
+  ai:
+    # API类型: openai, qianwen, wenxin
+    provider: openai
+    api-key: ${AI_API_KEY:ms-81841865-4e78-46e5-b944-dbf5842267a2}
+    api-url: https://api-inference.modelscope.cn/v1/chat/completions
+    model: Qwen/Qwen3-235B-A22B-Thinking-2507
+    max-tokens: 800
+
+logging:
+  level:
+    com.codetimemachine: DEBUG
+    org.eclipse.jgit: INFO
