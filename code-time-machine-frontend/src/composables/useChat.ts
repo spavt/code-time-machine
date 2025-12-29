@@ -283,7 +283,22 @@ export function useChat(sessionId: string) {
   }
 }
 
-// 生成会话ID
+// 生成随机会话ID（仅用于临时场景）
 export function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+}
+
+// 生成确定性会话ID（基于 repoId + filePath，确保同一文件使用相同的会话）
+export function generateDeterministicSessionId(repoId: number, filePath: string): string {
+  // 简单哈希函数
+  const str = `${repoId}-${filePath}`
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  // 转换为正数并返回
+  const positiveHash = Math.abs(hash).toString(36)
+  return `chat-${repoId}-${positiveHash}`
 }

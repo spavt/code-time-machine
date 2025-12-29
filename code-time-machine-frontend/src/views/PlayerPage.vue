@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
 import { fileApi } from '@/api'
 import { useTimelinePlayer, detectLanguage, computeChangedLines } from '@/composables/useTimelinePlayer'
-import { useChat, generateSessionId } from '@/composables/useChat'
+import { useChat, generateDeterministicSessionId } from '@/composables/useChat'
 import type { FileTimeline, TimelineCommit } from '@/types'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -25,7 +25,7 @@ const codeViewerRef = ref<HTMLElement | null>(null)
 const previousCodeViewerRef = ref<HTMLElement | null>(null)
 const changeKey = ref(0) // 用于触发动画重置
 const suggestions = ref<string[]>([]) // 智能推荐问题
-const contentLoading = new Set<number>()
+const contentLoading = new Map<number, Promise<void>>()
 let commitLoadToken = 0
 
 // 分屏对比模式
@@ -77,27 +77,36 @@ const player = useTimelinePlayer(() => commits.value, {
   }
 })
 
-const sessionId = generateSessionId()
+// 基于 repoId + filePath 生成确定性的 sessionId，确保同一文件使用相同的会话
+// 注意：使用 route.params 直接获取初始值，因为这些值在组件加载时即可用
+const sessionId = generateDeterministicSessionId(
+  Number(route.params.repoId),
+  decodeURIComponent(route.params.filePath as string || '')
+)
 const chat = useChat(sessionId)
 const language = computed(() => detectLanguage(filePath.value))
 
-async function ensureCommitContent(commit: TimelineCommit | null | undefined) {
-  if (!commit || commit.content != null) return
+function ensureCommitContent(commit: TimelineCommit | null | undefined): Promise<void> {
+  if (!commit || commit.content != null) return Promise.resolve()
   if (commit.changeType === 'DELETE') {
     commit.content = ''
-    return
+    return Promise.resolve()
   }
-  if (contentLoading.has(commit.id)) return
+  const existing = contentLoading.get(commit.id)
+  if (existing) return existing
 
-  contentLoading.add(commit.id)
-  try {
-    const { content } = await fileApi.getContent(repoId.value, commit.id, filePath.value)
-    commit.content = content ?? ''
-  } catch (e) {
-    console.warn('Failed to load commit content:', e)
-  } finally {
-    contentLoading.delete(commit.id)
-  }
+  const loadingPromise = (async () => {
+    try {
+      const { content } = await fileApi.getContent(repoId.value, commit.id, filePath.value)
+      commit.content = content ?? ''
+    } catch (e) {
+      console.warn('Failed to load commit content:', e)
+    } finally {
+      contentLoading.delete(commit.id)
+    }
+  })()
+  contentLoading.set(commit.id, loadingPromise)
+  return loadingPromise
 }
 
 onMounted(async () => {
@@ -108,6 +117,8 @@ onMounted(async () => {
     const data = await fileApi.getTimeline(repoId.value, filePath.value, false)
     timeline.value = data
     chat.setContext({ repoId: repoId.value, filePath: filePath.value })
+    // 加载历史聊天记录
+    await chat.loadHistory()
   } catch (e) {
     console.error('Failed to load timeline:', e)
   } finally {
@@ -119,6 +130,8 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
   if (commit) {
     const requestId = ++commitLoadToken
     if (trackingMode.value === 'file') {
+      const nextCommit = commits.value[player.currentIndex.value + 1]
+      void ensureCommitContent(nextCommit)
       await Promise.all([
         ensureCommitContent(commit),
         ensureCommitContent(oldCommit)
@@ -126,10 +139,6 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
       if (requestId !== commitLoadToken) return
     }
     const commitContent = commit.content ?? undefined
-    if (trackingMode.value === 'file') {
-      const nextCommit = commits.value[player.currentIndex.value + 1]
-      void ensureCommitContent(nextCommit)
-    }
     // 保存之前的代码用于对比
     previousCode.value = oldCommit?.content ?? ''
     
@@ -170,6 +179,9 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
           filePath.value
         )
         if (diffResult?.diff) {
+          const { additions, deletions } = countDiffStats(diffResult.diff)
+          commit.additions = additions
+          commit.deletions = deletions
           contextParts.push('\n=== Diff（变更内容）===')
           contextParts.push(diffResult.diff.slice(0, 2000)) // 限制 diff 长度
         }
@@ -403,6 +415,21 @@ function extractMethodFromCode(code: string, methodName: string): string | null 
   return null
 }
 
+function countDiffStats(diffText: string): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+  for (const line of diffText.split('\n')) {
+    if (!line) continue
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) continue
+    if (line.startsWith('+')) {
+      additions++
+    } else if (line.startsWith('-')) {
+      deletions++
+    }
+  }
+  return { additions, deletions }
+}
+
 const speedOptions = [
   { label: '0.5x', value: 3000 },
   { label: '1x', value: 1500 },
@@ -504,8 +531,8 @@ async function sendQuestion() {
             <span><el-icon><User /></el-icon> {{ player.currentCommit.value.authorName }}</span>
             <span><el-icon><Calendar /></el-icon> {{ formatTime(player.currentCommit.value.commitTime) }}</span>
             <span class="stats">
-              <span class="additions">+{{ player.currentCommit.value.additions ?? 0 }}</span>
-              <span class="deletions">-{{ player.currentCommit.value.deletions ?? 0 }}</span>
+              <span class="additions">+{{ player.currentCommit.value.additions ?? '--' }}</span>
+              <span class="deletions">-{{ player.currentCommit.value.deletions ?? '--' }}</span>
             </span>
           </div>
           <div class="ai-summary" v-if="player.currentCommit.value.aiSummary">
