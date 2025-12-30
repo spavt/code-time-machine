@@ -109,4 +109,14 @@ public interface GitService {
      * @return Map: "commitHash:filePath" -> 文件内容
      */
     Map<String, String> prefetchFileContents(String localPath, List<PrefetchRequest> requests);
+
+    /**
+     * 批量解析多个 commit 的文件变更（一次 git log 命令获取所有）
+     * 性能优化：避免对每个 commit 单独调用 git diff-tree
+     *
+     * @param localPath    本地路径
+     * @param commitHashes commit 哈希列表
+     * @return Map: commitHash -> List<FileChange>
+     */
+    Map<String, List<FileChange>> parseFileChangesBatch(String localPath, List<String> commitHashes);
 }

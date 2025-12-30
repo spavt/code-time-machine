@@ -7,6 +7,8 @@ import com.codetimemachine.entity.CommitRecord;
 import com.codetimemachine.entity.FileChange;
 import com.codetimemachine.entity.Repository;
 import com.codetimemachine.service.GitService;
+import com.github.benmanes.caffeine.cache.Cache;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.LogCommand;
@@ -35,7 +37,6 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -43,14 +44,14 @@ import java.util.function.Consumer;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class GitServiceImpl implements GitService {
 
     /**
-     * 文件内容缓存: key = "localPath:commitHash:filePath" -> content
-     * 使用 ConcurrentHashMap 保证线程安全
+     * 文件内容缓存 - 使用 Caffeine 高性能缓存
+     * 由 CacheConfig 注入
      */
-    private static final Map<String, String> FILE_CONTENT_CACHE = new ConcurrentHashMap<>();
-    private static final int MAX_CACHE_SIZE = 500;
+    private final Cache<String, String> fileContentCache;
 
     @Override
     public boolean cloneRepository(String url, String localPath) {
@@ -570,7 +571,7 @@ public class GitServiceImpl implements GitService {
         String cacheKey = localPath + ":" + commitHash + ":" + filePath;
 
         // 检查缓存
-        String cached = FILE_CONTENT_CACHE.get(cacheKey);
+        String cached = fileContentCache.getIfPresent(cacheKey);
         if (cached != null) {
             log.debug("从缓存获取文件内容: {}", filePath);
             return cached;
@@ -620,21 +621,10 @@ public class GitServiceImpl implements GitService {
     }
 
     /**
-     * 添加到缓存，如果缓存满了则清空一半
+     * 添加到缓存（Caffeine 自动处理大小限制和过期）
      */
     private void putToCache(String key, String value) {
-        if (FILE_CONTENT_CACHE.size() >= MAX_CACHE_SIZE) {
-            // 简单策略：清空一半缓存
-            int toRemove = MAX_CACHE_SIZE / 2;
-            Iterator<String> iter = FILE_CONTENT_CACHE.keySet().iterator();
-            while (iter.hasNext() && toRemove > 0) {
-                iter.next();
-                iter.remove();
-                toRemove--;
-            }
-            log.debug("缓存已满，清理了 {} 条记录", MAX_CACHE_SIZE / 2);
-        }
-        FILE_CONTENT_CACHE.put(key, value);
+        fileContentCache.put(key, value);
     }
 
     /**
@@ -1078,6 +1068,39 @@ public class GitServiceImpl implements GitService {
         } catch (Exception e) {
             log.error("批量预取文件失败: {}", e.getMessage());
         }
+
+        return results;
+    }
+
+    @Override
+    public Map<String, List<FileChange>> parseFileChangesBatch(String localPath, List<String> commitHashes) {
+        Map<String, List<FileChange>> results = new HashMap<>();
+
+        if (commitHashes == null || commitHashes.isEmpty()) {
+            return results;
+        }
+
+        log.info("解析文件变更: {} 个 commit", commitHashes.size());
+        long startTime = System.currentTimeMillis();
+
+        int processed = 0;
+        for (String hash : commitHashes) {
+            // 使用 parseFileChanges（内部用 git diff-tree）更可靠
+            List<FileChange> changes = parseFileChanges(localPath, hash);
+            results.put(hash, changes);
+            processed++;
+
+            // 每处理 50 个输出一次进度
+            if (processed % 50 == 0) {
+                log.info("文件变更解析进度: {}/{}", processed, commitHashes.size());
+            }
+        }
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        int totalChanges = results.values().stream().mapToInt(List::size).sum();
+        log.info("文件变更解析完成: {} 个 commit, {} 个文件变更, 耗时 {}ms (平均 {}ms/commit)",
+                commitHashes.size(), totalChanges, elapsed,
+                commitHashes.isEmpty() ? 0 : elapsed / commitHashes.size());
 
         return results;
     }

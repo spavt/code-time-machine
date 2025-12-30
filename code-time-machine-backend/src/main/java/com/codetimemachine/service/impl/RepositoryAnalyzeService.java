@@ -176,11 +176,26 @@ public class RepositoryAnalyzeService {
     }
 
     private void batchInsertFileChanges(Repository repo,
-                                        List<CommitRecord> commits,
-                                        Map<String, Long> commitIdMap) {
+            List<CommitRecord> commits,
+            Map<String, Long> commitIdMap) {
         if (commits == null || commits.isEmpty()) {
             return;
         }
+
+        // 性能优化：一次性获取所有 commit 的文件变更
+        List<String> commitHashes = commits.stream()
+                .map(CommitRecord::getCommitHash)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        log.info("批量获取 {} 个 commit 的文件变更", commitHashes.size());
+        long startTime = System.currentTimeMillis();
+
+        Map<String, List<FileChange>> allChanges = gitService.parseFileChangesBatch(
+                repo.getLocalPath(), commitHashes);
+
+        log.info("批量获取完成，耗时 {}ms，开始入库", System.currentTimeMillis() - startTime);
+
         try (SqlSession session = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
             FileChangeMapper batchMapper = session.getMapper(FileChangeMapper.class);
             int count = 0;
@@ -195,9 +210,7 @@ public class RepositoryAnalyzeService {
                     continue;
                 }
 
-                List<FileChange> changes = gitService.parseFileChanges(
-                        repo.getLocalPath(),
-                        commit.getCommitHash());
+                List<FileChange> changes = allChanges.getOrDefault(commit.getCommitHash(), List.of());
                 for (FileChange change : changes) {
                     change.setRepoId(repo.getId());
                     change.setCommitId(commitId);
@@ -210,6 +223,7 @@ public class RepositoryAnalyzeService {
 
             session.flushStatements();
             session.commit();
+            log.info("文件变更入库完成，共 {} 条记录", count);
         } catch (Exception e) {
             log.error("Batch insert file changes failed: {}", e.getMessage(), e);
             throw e;

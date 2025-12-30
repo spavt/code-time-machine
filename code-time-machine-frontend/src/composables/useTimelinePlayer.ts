@@ -4,6 +4,7 @@
 
 import { ref, computed, watch, onUnmounted } from 'vue'
 import type { TimelineCommit, DiffLine } from '@/types'
+import { diffArrays } from 'diff'
 
 export interface PlayerOptions {
   autoPlay?: boolean
@@ -23,7 +24,7 @@ export function useTimelinePlayer(
   const currentIndex = ref(0)
   const speed = ref(defaultSpeed) // 毫秒
   const playDirection = ref<'forward' | 'backward'>('forward')
-  
+
   let playTimer: ReturnType<typeof setInterval> | null = null
   let pendingAdvance = false
   let advanceToken = 0
@@ -32,10 +33,10 @@ export function useTimelinePlayer(
   const totalFrames = computed(() => commits().length)
   const hasNext = computed(() => currentIndex.value < totalFrames.value - 1)
   const hasPrev = computed(() => currentIndex.value > 0)
-  const progress = computed(() => 
+  const progress = computed(() =>
     totalFrames.value > 0 ? (currentIndex.value / (totalFrames.value - 1)) * 100 : 0
   )
-  
+
   const currentCommit = computed(() => {
     const list = commits()
     return list[currentIndex.value] || null
@@ -56,7 +57,7 @@ export function useTimelinePlayer(
         return
       }
     }
-    
+
     isPlaying.value = true
     pendingAdvance = false
     advanceToken += 1
@@ -226,7 +227,7 @@ export function useTimelinePlayer(
     hasPrev,
     currentCommit,
     previousCommit,
-    
+
     // 方法
     play,
     pause,
@@ -245,19 +246,19 @@ export function useTimelinePlayer(
 // Diff解析工具
 export function parseDiff(diffText: string): DiffLine[] {
   if (!diffText) return []
-  
+
   const lines = diffText.split('\n')
   const result: DiffLine[] = []
   let oldLine = 0
   let newLine = 0
-  
+
   for (const line of lines) {
     // 跳过diff头信息
-    if (line.startsWith('diff ') || line.startsWith('index ') || 
-        line.startsWith('---') || line.startsWith('+++')) {
+    if (line.startsWith('diff ') || line.startsWith('index ') ||
+      line.startsWith('---') || line.startsWith('+++')) {
       continue
     }
-    
+
     // 解析hunk头
     const hunkMatch = line.match(/^@@ -(\d+),?\d* \+(\d+),?\d* @@/)
     if (hunkMatch) {
@@ -270,7 +271,7 @@ export function parseDiff(diffText: string): DiffLine[] {
       })
       continue
     }
-    
+
     if (line.startsWith('+')) {
       newLine++
       result.push({
@@ -299,14 +300,14 @@ export function parseDiff(diffText: string): DiffLine[] {
       })
     }
   }
-  
+
   return result
 }
 
 // 代码语言检测
 export function detectLanguage(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() || ''
-  
+
   const langMap: Record<string, string> = {
     'js': 'javascript',
     'jsx': 'jsx',
@@ -343,74 +344,71 @@ export function detectLanguage(filePath: string): string {
     'md': 'markdown',
     'dockerfile': 'dockerfile'
   }
-  
+
   return langMap[ext] || 'plaintext'
 }
 
-// 计算变更行 - 使用简化的逐行对比算法
+// 计算变更行 - 使用 diff 库的 Myers 算法，时间复杂度 O(n*d)
 export interface LineChange {
   lineNumber: number
   type: 'added' | 'deleted' | 'modified'
 }
 
+/**
+ * 使用 Myers diff 算法计算变更行
+ * 时间复杂度: O(n*d)，其中 n 是行数，d 是差异大小
+ * 相比原来的 O(n²) 实现，对于大文件和小改动有显著提升
+ */
 export function computeChangedLines(
   oldContent: string,
   newContent: string
 ): { added: Set<number>; deleted: number[]; firstChangedLine: number | null } {
-  const oldLines = oldContent.split('\n')
-  const newLines = newContent.split('\n')
-  
   const added = new Set<number>()
   const deleted: number[] = []
   let firstChangedLine: number | null = null
-  
-  // 使用简单的 LCS 思路进行对比
-  // 创建旧行内容到行号的映射
-  const oldLineMap = new Map<string, number[]>()
-  oldLines.forEach((line, idx) => {
-    const existing = oldLineMap.get(line) || []
-    existing.push(idx)
-    oldLineMap.set(line, existing)
-  })
-  
-  // 追踪已匹配的旧行
-  const matchedOldLines = new Set<number>()
-  
-  // 第一遍：找出完全匹配的行
-  const newLineMatches: (number | null)[] = new Array(newLines.length).fill(null)
-  
-  newLines.forEach((line, newIdx) => {
-    const candidates = oldLineMap.get(line) || []
-    for (const oldIdx of candidates) {
-      if (!matchedOldLines.has(oldIdx)) {
-        newLineMatches[newIdx] = oldIdx
-        matchedOldLines.add(oldIdx)
-        break
+
+  // 快速路径：完全相同
+  if (oldContent === newContent) {
+    return { added, deleted, firstChangedLine }
+  }
+
+  const oldLines = oldContent.split('\n')
+  const newLines = newContent.split('\n')
+
+  // 使用 diff 库的 diffArrays（基于 Myers 算法）
+  const changes = diffArrays(oldLines, newLines)
+
+  let oldLineNum = 1
+  let newLineNum = 1
+
+  for (const change of changes) {
+    const count = change.value.length
+
+    if (change.removed) {
+      // 删除的行
+      for (let i = 0; i < count; i++) {
+        deleted.push(oldLineNum + i)
+        if (firstChangedLine === null) {
+          firstChangedLine = oldLineNum + i
+        }
       }
-    }
-  })
-  
-  // 标记新增行（在新内容中存在但未匹配到旧内容的行）
-  newLines.forEach((_, newIdx) => {
-    if (newLineMatches[newIdx] === null) {
-      const lineNum = newIdx + 1
-      added.add(lineNum)
-      if (firstChangedLine === null || lineNum < firstChangedLine) {
-        firstChangedLine = lineNum
+      oldLineNum += count
+    } else if (change.added) {
+      // 新增的行
+      for (let i = 0; i < count; i++) {
+        const lineNum = newLineNum + i
+        added.add(lineNum)
+        if (firstChangedLine === null || lineNum < firstChangedLine) {
+          firstChangedLine = lineNum
+        }
       }
+      newLineNum += count
+    } else {
+      // 未改变的行
+      oldLineNum += count
+      newLineNum += count
     }
-  })
-  
-  // 标记删除行（在旧内容中存在但未被匹配的行）
-  oldLines.forEach((_, oldIdx) => {
-    if (!matchedOldLines.has(oldIdx)) {
-      deleted.push(oldIdx + 1)
-      const approxNewLine = oldIdx + 1
-      if (firstChangedLine === null || approxNewLine < firstChangedLine) {
-        firstChangedLine = approxNewLine
-      }
-    }
-  })
-  
+  }
+
   return { added, deleted, firstChangedLine }
 }

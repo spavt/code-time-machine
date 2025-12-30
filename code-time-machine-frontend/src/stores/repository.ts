@@ -23,6 +23,11 @@ export const useRepositoryStore = defineStore('repository', () => {
   const error = ref<string | null>(null)
   const pollIntervalMs = 2000
 
+  // 分页状态
+  const commitsTotal = ref(0)
+  const commitsPage = ref(1)
+  const commitsPageSize = 100
+
   // 计算属性
   const hasRepo = computed(() => currentRepo.value !== null)
   const isAnalyzing = computed(() => currentRepo.value?.status === 1)
@@ -175,17 +180,38 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 获取提交列表
+  // 获取提交列表（首次加载）
   async function fetchCommits(repoId: number, page = 1, pageSize = 100) {
     try {
       const result = await commitApi.getList(repoId, page, pageSize)
       commits.value = result.list
+      commitsTotal.value = result.total
+      commitsPage.value = page
       return result
     } catch (err) {
       error.value = (err as Error).message
       throw err
     }
   }
+
+  // 加载更多提交
+  async function loadMoreCommits(repoId: number) {
+    try {
+      const nextPage = commitsPage.value + 1
+      const result = await commitApi.getList(repoId, nextPage, commitsPageSize)
+      commits.value = [...commits.value, ...result.list]
+      commitsPage.value = nextPage
+      return result
+    } catch (err) {
+      error.value = (err as Error).message
+      throw err
+    }
+  }
+
+  // 是否还有更多提交
+  const hasMoreCommits = computed(() => {
+    return commits.value.length < commitsTotal.value
+  })
 
   // 选择提交
   async function selectCommit(commit: CommitRecord) {
@@ -267,12 +293,15 @@ export const useRepositoryStore = defineStore('repository', () => {
     totalCommits,
     totalAuthors,
     commitsByOrder,
+    commitsTotal,
+    hasMoreCommits,
 
     // Actions
     fetchRepositories,
     analyzeRepository,
     fetchRepoDetail,
     fetchCommits,
+    loadMoreCommits,
     selectCommit,
     triggerAnalysis,
     clearCurrentRepo,

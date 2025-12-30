@@ -16,6 +16,7 @@ const repoUrl = ref('')
 // 高级选项
 const showAdvancedOptions = ref(false)
 const analyzeDepth = ref(500) // 默认推荐深度
+const customDepth = ref(1000) // 自定义深度默认值
 const dateRange = ref<[Date, Date] | null>(null)
 const pathFilter = ref('')
 
@@ -46,7 +47,8 @@ function buildAnalyzeOptions() {
     pathFilters?: string[]
     shallow?: boolean
   } = {
-    depth: analyzeDepth.value,
+    // 如果选择自定义(0)，使用 customDepth 的值
+    depth: analyzeDepth.value === 0 ? customDepth.value : analyzeDepth.value,
     shallow: true
   }
   
@@ -185,6 +187,19 @@ function goBack() {
                     <div class="depth-time">{{ preset.time }}</div>
                   </div>
                 </div>
+                
+                <!-- 自定义次数输入框 -->
+                <div v-if="analyzeDepth === 0" class="custom-depth-input">
+                  <el-input-number
+                    v-model="customDepth"
+                    :min="1"
+                    :max="100000"
+                    :step="100"
+                    size="large"
+                    placeholder="输入提交次数"
+                  />
+                  <span class="custom-hint">次提交</span>
+                </div>
               </div>
               
               <!-- 时间范围 -->
@@ -223,10 +238,10 @@ function goBack() {
               <div class="config-summary">
                 <el-icon><InfoFilled /></el-icon>
                 <span>
-                  当前配置: 分析最近 <strong>{{ analyzeDepth === -1 ? '全部' : analyzeDepth }}</strong> 次提交
+                  当前配置: 分析最近 <strong>{{ analyzeDepth === -1 ? '全部' : (analyzeDepth === 0 ? customDepth : analyzeDepth) }}</strong> 次提交
                   <template v-if="dateRange">，限制时间范围</template>
                   <template v-if="pathFilter.trim()">，过滤路径</template>
-                  ，预计耗时 <strong>{{ selectedDepthPreset.time }}</strong>
+                  ，预计耗时 <strong>{{ analyzeDepth === 0 ? '取决于数量' : selectedDepthPreset.time }}</strong>
                 </span>
               </div>
             </div>
@@ -703,6 +718,22 @@ function goBack() {
   font-size: 0.7rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
+}
+
+.custom-depth-input {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-primary);
+}
+
+.custom-hint {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .config-summary {

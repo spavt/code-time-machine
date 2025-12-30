@@ -50,7 +50,8 @@ export const DepthPresets = [
   { value: 100, label: '快速 (100次提交)', desc: '适合快速浏览', time: '~1分钟' },
   { value: 500, label: '推荐 (500次提交)', desc: '平衡速度和深度', time: '~3分钟' },
   { value: 2000, label: '深度 (2000次提交)', desc: '深入分析历史', time: '~10分钟' },
-  { value: -1, label: '全部历史', desc: '完整项目历史', time: '取决于项目大小' }
+  { value: -1, label: '全部历史', desc: '完整项目历史', time: '取决于项目大小' },
+  { value: 0, label: '自定义', desc: '输入任意次数', time: '取决于数量' }
 ]
 
 // 提交记录
@@ -154,6 +155,8 @@ export interface ChatMessage {
   sessionId: string
   repoId?: number
   commitId?: number
+  commitOrder?: number     // 提交序号（第几帧）
+  shortHash?: string       // 提交短哈希
   filePath?: string
   role: 'user' | 'assistant' | 'system'
   content: string

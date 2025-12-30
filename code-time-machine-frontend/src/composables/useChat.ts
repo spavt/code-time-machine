@@ -15,6 +15,8 @@ export function useChat(sessionId: string) {
   const context = ref<{
     repoId?: number
     commitId?: number
+    commitOrder?: number     // 当前帧号
+    shortHash?: string       // 当前提交短哈希
     filePath?: string
     codeSnippet?: string
   }>({})
@@ -35,6 +37,8 @@ export function useChat(sessionId: string) {
       sessionId,
       repoId: context.value.repoId,
       commitId: context.value.commitId,
+      commitOrder: context.value.commitOrder,
+      shortHash: context.value.shortHash,
       filePath: context.value.filePath,
       role: 'user',
       content: question,
@@ -160,6 +164,8 @@ export function useChat(sessionId: string) {
       sessionId,
       repoId: context.value.repoId,
       commitId: context.value.commitId,
+      commitOrder: context.value.commitOrder,
+      shortHash: context.value.shortHash,
       filePath: context.value.filePath,
       role: 'user',
       content: question,

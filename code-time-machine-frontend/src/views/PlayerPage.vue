@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useVirtualList } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
-import { fileApi } from '@/api'
+import { fileApi, commitApi } from '@/api'
 import { useTimelinePlayer, detectLanguage, computeChangedLines } from '@/composables/useTimelinePlayer'
 import { useChat, generateDeterministicSessionId } from '@/composables/useChat'
-import type { FileTimeline, TimelineCommit } from '@/types'
+import type { FileTimeline, TimelineCommit, AiAnalysis, ChangeCategory } from '@/types'
+import { ChangeCategoryMap } from '@/types'
+import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 
@@ -28,6 +31,9 @@ const suggestions = ref<string[]>([]) // 智能推荐问题
 const contentLoading = new Map<number, Promise<void>>()
 let commitLoadToken = 0
 
+// 代码高亮缓存：key = commitId, value = 高亮后的 HTML
+const highlightCache = new Map<number, string>()
+
 // 分屏对比模式
 const viewMode = ref<'single' | 'split'>('single')
 
@@ -42,6 +48,11 @@ const methodList = ref<Array<{ name: string; signature: string; startLine: numbe
 const selectedMethod = ref<string | null>(null)
 const methodTimelineData = ref<Array<any>>([])
 const methodLoading = ref(false)
+
+// AI 分析
+const currentAnalysis = ref<AiAnalysis | null>(null)
+const analysisLoading = ref(false)
+const showAnalysisPopover = ref(false)
 
 // 根据追踪模式切换数据源
 const commits = computed(() => {
@@ -86,6 +97,9 @@ const sessionId = generateDeterministicSessionId(
 const chat = useChat(sessionId)
 const language = computed(() => detectLanguage(filePath.value))
 
+// 滑动窗口预加载配置
+const PRELOAD_WINDOW_SIZE = 5 // 预加载前后各 5 帧
+
 function ensureCommitContent(commit: TimelineCommit | null | undefined): Promise<void> {
   if (!commit || commit.content != null) return Promise.resolve()
   if (commit.changeType === 'DELETE') {
@@ -109,6 +123,73 @@ function ensureCommitContent(commit: TimelineCommit | null | undefined): Promise
   return loadingPromise
 }
 
+// 滑动窗口预加载：预加载当前帧前后各 PRELOAD_WINDOW_SIZE 帧
+function preloadWindow(centerIndex: number) {
+  if (trackingMode.value !== 'file') return
+  
+  const commitList = commits.value
+  const start = Math.max(0, centerIndex - PRELOAD_WINDOW_SIZE)
+  const end = Math.min(commitList.length - 1, centerIndex + PRELOAD_WINDOW_SIZE)
+  
+  for (let i = start; i <= end; i++) {
+    const commit = commitList[i]
+    if (commit && commit.content == null) {
+      // 使用 void 避免阻塞，后台静默加载
+      void ensureCommitContent(commit).then(() => {
+        // 加载完成后预计算高亮
+        if (commit.content) {
+          getCachedHighlight(commit.id, commit.content)
+        }
+      })
+    }
+  }
+}
+
+// 获取缓存的高亮代码，若未缓存则计算并缓存
+function getCachedHighlight(commitId: number, content: string): string {
+  if (!content) return ''
+  
+  // 检查缓存
+  const cached = highlightCache.get(commitId)
+  if (cached !== undefined) {
+    return cached
+  }
+  
+  // 计算高亮并缓存
+  let highlighted: string
+  try {
+    highlighted = hljs.highlight(content, { language: language.value }).value
+  } catch {
+    highlighted = content
+  }
+  
+  highlightCache.set(commitId, highlighted)
+  return highlighted
+}
+
+// 补充历史消息的 commitOrder 和 shortHash（后端可能没有返回这些字段）
+function enrichHistoryMessages() {
+  const commitList = commits.value
+  if (commitList.length === 0) return
+  
+  // 创建 commitId -> commit 的映射
+  const commitMap = new Map<number, { order: number; shortHash: string; message: string }>()
+  commitList.forEach((c, idx) => {
+    commitMap.set(c.id, { order: idx + 1, shortHash: c.shortHash, message: c.commitMessage })
+  })
+  
+  // 遍历消息，补充缺失的字段
+  for (const msg of chat.messages.value) {
+    if (msg.role === 'user' && msg.commitId && !msg.commitOrder) {
+      const info = commitMap.get(msg.commitId)
+      if (info) {
+        msg.commitOrder = info.order
+        msg.shortHash = info.shortHash
+      }
+    }
+  }
+}
+
 onMounted(async () => {
   try {
     if (!repoStore.currentRepo || repoStore.currentRepo.id !== repoId.value) {
@@ -119,6 +200,10 @@ onMounted(async () => {
     chat.setContext({ repoId: repoId.value, filePath: filePath.value })
     // 加载历史聊天记录
     await chat.loadHistory()
+    // 补充历史消息的 commitOrder 和 shortHash（后端可能没有返回这些字段）
+    enrichHistoryMessages()
+    // 初始预加载滑动窗口
+    preloadWindow(0)
   } catch (e) {
     console.error('Failed to load timeline:', e)
   } finally {
@@ -130,8 +215,8 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
   if (commit) {
     const requestId = ++commitLoadToken
     if (trackingMode.value === 'file') {
-      const nextCommit = commits.value[player.currentIndex.value + 1]
-      void ensureCommitContent(nextCommit)
+      // 滑动窗口预加载：预加载当前帧前后各 5 帧
+      preloadWindow(player.currentIndex.value)
       await Promise.all([
         ensureCommitContent(commit),
         ensureCommitContent(oldCommit)
@@ -155,7 +240,7 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
       // 文件模式：显示完整文件
       currentCode.value = commitContent == null ? '// 加载中...' : commitContent
     }
-    changeKey.value++ // 触发动画重置
+    // 注：移除了 changeKey.value++ 以避免 DOM 重建导致滚动位置重置
     
     // 构建富上下文：元信息 + diff + 代码片段
     let contextParts: string[] = []
@@ -198,16 +283,24 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
       contextParts.push(commitContent.slice(0, remainingSpace))
     }
     
-    // 更新AI聊天上下文
+    // 更新AI聊天上下文（包含当前帧信息）
     chat.setContext({
       repoId: repoId.value,
+      commitId: commit.id,
+      commitOrder: player.currentIndex.value + 1,
+      shortHash: commit.shortHash,
       filePath: filePath.value,
       codeSnippet: contextParts.join('\n')
     })
     
-    // 自动滚动到第一个变化行
+    // 自动滚动到第一个变化行（等待 DOM 完全渲染）
     await nextTick()
-    scrollToFirstChange()
+    // 再等待一个微任务周期，确保 computed 属性都计算完成
+    await nextTick()
+    // 添加小延迟确保浏览器完成渲染
+    setTimeout(() => {
+      scrollToFirstChange()
+    }, 50)
     
     // 加载智能推荐问题
     if (commit.id) {
@@ -221,23 +314,18 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
   }
 }, { immediate: true })
 
+// 使用缓存的高亮代码
 const highlightedCode = computed(() => {
-  if (!currentCode.value) return ''
-  try {
-    return hljs.highlight(currentCode.value, { language: language.value }).value
-  } catch {
-    return currentCode.value
-  }
+  const commit = player.currentCommit.value
+  if (!commit || !currentCode.value) return ''
+  return getCachedHighlight(commit.id, currentCode.value)
 })
 
-// 高亮上一版本代码
+// 高亮上一版本代码（使用缓存）
 const highlightedPreviousCode = computed(() => {
-  if (!previousCode.value) return ''
-  try {
-    return hljs.highlight(previousCode.value, { language: language.value }).value
-  } catch {
-    return previousCode.value
-  }
+  const prevCommit = player.previousCommit.value
+  if (!prevCommit || !previousCode.value) return ''
+  return getCachedHighlight(prevCommit.id, previousCode.value)
 })
 
 // 计算变更行
@@ -267,13 +355,91 @@ const previousCodeLines = computed(() => {
   }))
 })
 
+// =========== 虚拟滚动（仅超过 800 行时启用）===========
+const VIRTUAL_SCROLL_THRESHOLD = 800
+const CODE_LINE_HEIGHT = 22 // 与 CSS .code-line min-height 保持一致
+
+// 是否使用虚拟滚动
+const useVirtualCodeViewer = computed(() => codeLines.value.length > VIRTUAL_SCROLL_THRESHOLD)
+const useVirtualPreviousViewer = computed(() => previousCodeLines.value.length > VIRTUAL_SCROLL_THRESHOLD)
+
+// 当前代码虚拟列表
+const {
+  list: virtualCodeLines,
+  containerProps: codeContainerProps,
+  wrapperProps: codeWrapperProps,
+  scrollTo: scrollToCodeLine
+} = useVirtualList(codeLines, { itemHeight: CODE_LINE_HEIGHT })
+
+// 上一版本代码虚拟列表
+const {
+  list: virtualPreviousCodeLines,
+  containerProps: previousContainerProps,
+  wrapperProps: previousWrapperProps,
+  scrollTo: scrollToPreviousLine
+} = useVirtualList(previousCodeLines, { itemHeight: CODE_LINE_HEIGHT })
+
+
 // 自动滚动到第一个变化行
 function scrollToFirstChange() {
   const firstLine = changedLines.value.firstChangedLine
-  if (firstLine && codeViewerRef.value) {
-    const lineElement = codeViewerRef.value.querySelector(`[data-line="${firstLine}"]`)
-    if (lineElement) {
-      lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  
+  if (!firstLine) {
+    return
+  }
+  
+  // 虚拟滚动模式：使用 scrollTo API
+  if (useVirtualCodeViewer.value) {
+    // 滚动到目标行，居中显示
+    const targetIndex = Math.max(0, firstLine - 1)
+    scrollToCodeLine(targetIndex)
+    if (viewMode.value === 'split' && useVirtualPreviousViewer.value) {
+      scrollToPreviousLine(targetIndex)
+    }
+    return
+  }
+  
+  // 非虚拟滚动模式：使用原有 DOM 滚动逻辑
+  if (viewMode.value === 'split') {
+    // 双栏模式：查找实际元素位置，同步滚动两边
+    // 播放时使用瞬间滚动（避免动画未完成就切帧），手动时用平滑滚动
+    const scrollBehavior: ScrollBehavior = player.isPlaying.value ? 'auto' : 'smooth'
+    
+    const currentViewer = codeViewerRef.value
+    const previousViewer = previousCodeViewerRef.value
+    
+    if (currentViewer) {
+      // 在当前版本中查找目标行
+      const lineElement = currentViewer.querySelector(`[data-line="${firstLine}"]`) as HTMLElement
+      
+      let targetScrollTop: number
+      
+      if (lineElement) {
+        // 找到元素：计算实际位置
+        const containerRect = currentViewer.getBoundingClientRect()
+        const elementRect = lineElement.getBoundingClientRect()
+        const relativeTop = elementRect.top - containerRect.top + currentViewer.scrollTop
+        targetScrollTop = Math.max(0, relativeTop - containerRect.height / 2)
+      } else {
+        // 未找到元素：使用估算（备用方案）
+        const firstLineEl = currentViewer.querySelector('[data-line="1"]') as HTMLElement
+        const lineHeight = firstLineEl?.offsetHeight || 22
+        const containerHeight = currentViewer.clientHeight
+        targetScrollTop = Math.max(0, (firstLine - 1) * lineHeight - containerHeight / 2)
+      }
+      
+      currentViewer.scrollTo({ top: targetScrollTop, behavior: scrollBehavior })
+      if (previousViewer) {
+        previousViewer.scrollTo({ top: targetScrollTop, behavior: scrollBehavior })
+      }
+    }
+  } else {
+    // 单栏模式：始终使用平滑滚动
+    if (codeViewerRef.value) {
+      const lineElement = codeViewerRef.value.querySelector(`[data-line="${firstLine}"]`)
+      if (lineElement) {
+        lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
     }
   }
 }
@@ -453,6 +619,117 @@ async function sendQuestion() {
   await chat.sendMessageStream(questionInput.value)
   questionInput.value = ''
 }
+
+// 跳转到指定帧（根据 commitOrder）
+function jumpToCommitOrder(commitOrder: number | undefined) {
+  if (!commitOrder) return
+  const targetIndex = commitOrder - 1  // commitOrder 从 1 开始，index 从 0 开始
+  if (targetIndex >= 0 && targetIndex < player.totalFrames.value) {
+    player.goTo(targetIndex)
+  }
+}
+
+// 按提交分组的消息（用于显示分隔线）
+interface MessageGroup {
+  commitOrder?: number
+  shortHash?: string
+  commitMessage?: string
+  messages: typeof chat.messages.value
+}
+
+const groupedMessages = computed((): MessageGroup[] => {
+  const messages = chat.messages.value
+  if (messages.length === 0) return []
+  
+  const groups: MessageGroup[] = []
+  let currentGroup: MessageGroup | null = null
+  
+  for (const msg of messages) {
+    // 只有用户消息带有 commitOrder，用它来判断分组
+    const msgCommitOrder = msg.role === 'user' ? msg.commitOrder : undefined
+    
+    // 如果是新的提交组或第一条消息
+    if (msg.role === 'user' && (
+      !currentGroup || 
+      currentGroup.commitOrder !== msgCommitOrder
+    )) {
+      // 查找对应 commit 获取 message
+      const commitInfo = commits.value.find(c => c.shortHash === msg.shortHash)
+      currentGroup = {
+        commitOrder: msgCommitOrder,
+        shortHash: msg.shortHash,
+        commitMessage: commitInfo?.commitMessage,
+        messages: []
+      }
+      groups.push(currentGroup)
+    }
+    
+    if (!currentGroup) {
+      // 如果第一条是 assistant 消息（理论上不应该），创建一个无分组
+      currentGroup = { messages: [] }
+      groups.push(currentGroup)
+    }
+    
+    currentGroup.messages.push(msg)
+  }
+  
+  return groups
+})
+
+// ========== AI 分析相关函数 ==========
+async function fetchAnalysis() {
+  const commit = player.currentCommit.value
+  if (!commit) return
+
+  // 如果已有分析，直接显示
+  if (currentAnalysis.value?.commitId === commit.id) {
+    showAnalysisPopover.value = !showAnalysisPopover.value
+    return
+  }
+
+  analysisLoading.value = true
+  try {
+    // 先尝试获取已有分析
+    try {
+      const analysis = await commitApi.getAiAnalysis(commit.id)
+      currentAnalysis.value = analysis
+      showAnalysisPopover.value = true
+      return
+    } catch (e: any) {
+      // 404 表示没有分析
+      console.log('No existing analysis, triggering new one...')
+    }
+
+    // 触发新分析
+    ElMessage.info('正在生成 AI 分析...')
+    const analysis = await commitApi.triggerAnalysis(commit.id)
+    currentAnalysis.value = analysis
+    showAnalysisPopover.value = true
+    ElMessage.success('AI 分析完成')
+  } catch (e: any) {
+    console.error('AI analysis failed:', e)
+    ElMessage.error('AI 分析失败')
+  } finally {
+    analysisLoading.value = false
+  }
+}
+
+function getCategoryInfo(category: string | undefined) {
+  if (!category) return null
+  return ChangeCategoryMap[category as ChangeCategory] || null
+}
+
+function renderStars(score: number | undefined): string {
+  if (!score) return ''
+  const filled = Math.round((score / 10) * 5)
+  return '★'.repeat(filled) + '☆'.repeat(5 - filled)
+}
+
+// 当 commit 切换时，重置分析状态
+watch(() => player.currentCommit.value?.id, () => {
+  currentAnalysis.value = null
+  showAnalysisPopover.value = false
+})
 </script>
 
 <template>
@@ -535,16 +812,107 @@ async function sendQuestion() {
               <span class="deletions">-{{ player.currentCommit.value.deletions ?? '--' }}</span>
             </span>
           </div>
-          <div class="ai-summary" v-if="player.currentCommit.value.aiSummary">
-            <el-icon><MagicStick /></el-icon>
-            <span>{{ player.currentCommit.value.aiSummary }}</span>
+          <!-- AI 分析 -->
+          <div class="ai-analysis-row">
+            <el-popover
+              :visible="showAnalysisPopover"
+              placement="bottom-start"
+              :width="400"
+              trigger="click"
+            >
+              <template #reference>
+                <el-button 
+                  size="small" 
+                  :loading="analysisLoading"
+                  @click="fetchAnalysis"
+                  class="ai-analysis-btn"
+                >
+                  <el-icon><MagicStick /></el-icon>
+                  {{ analysisLoading ? '分析中...' : 'AI 分析' }}
+                </el-button>
+              </template>
+              
+              <!-- Popover 内容 -->
+              <div class="analysis-popover" v-if="currentAnalysis">
+                <div class="analysis-header">
+                  <span class="analysis-title">🤖 AI 分析结果</span>
+                  <el-button text size="small" @click="showAnalysisPopover = false">
+                    <el-icon><Close /></el-icon>
+                  </el-button>
+                </div>
+                
+                <div class="analysis-body">
+                  <div class="analysis-item" v-if="currentAnalysis.summary">
+                    <span class="analysis-label">📝 摘要</span>
+                    <p class="analysis-text">{{ currentAnalysis.summary }}</p>
+                  </div>
+                  
+                  <div class="analysis-item" v-if="currentAnalysis.purpose">
+                    <span class="analysis-label">🎯 目的</span>
+                    <p class="analysis-text">{{ currentAnalysis.purpose }}</p>
+                  </div>
+                  
+                  <div class="analysis-item" v-if="currentAnalysis.impact">
+                    <span class="analysis-label">⚡ 影响</span>
+                    <p class="analysis-text">{{ currentAnalysis.impact }}</p>
+                  </div>
+                </div>
+
+                <div class="analysis-footer">
+                  <span 
+                    v-if="getCategoryInfo(currentAnalysis.changeCategory)"
+                    class="category-tag"
+                    :style="{ 
+                      background: getCategoryInfo(currentAnalysis.changeCategory)?.color + '20',
+                      color: getCategoryInfo(currentAnalysis.changeCategory)?.color
+                    }"
+                  >
+                    {{ getCategoryInfo(currentAnalysis.changeCategory)?.label }}
+                  </span>
+                  
+                  <div class="analysis-scores" v-if="currentAnalysis.complexityScore || currentAnalysis.importanceScore">
+                    <span v-if="currentAnalysis.complexityScore" class="score-item">
+                      复杂度: <span class="score-stars">{{ renderStars(currentAnalysis.complexityScore) }}</span>
+                    </span>
+                    <span v-if="currentAnalysis.importanceScore" class="score-item">
+                      重要性: <span class="score-stars">{{ renderStars(currentAnalysis.importanceScore) }}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </el-popover>
+            
+            <!-- 简短摘要（如果已有分析） -->
+            <span v-if="currentAnalysis?.summary" class="quick-summary" @click="showAnalysisPopover = true">
+              {{ currentAnalysis.summary.slice(0, 50) }}{{ currentAnalysis.summary.length > 50 ? '...' : '' }}
+            </span>
           </div>
         </div>
         <div class="code-viewers" :class="{ 'code-viewers--split': viewMode === 'split' }">
           <!-- 旧版本代码（分屏模式） -->
-          <div class="code-viewer code-viewer--previous" v-if="viewMode === 'split'" ref="previousCodeViewerRef" @scroll="syncScroll('previous')">
+          <div 
+            class="code-viewer code-viewer--previous" 
+            v-if="viewMode === 'split'" 
+            ref="previousCodeViewerRef" 
+            @scroll="syncScroll('previous')"
+            v-bind="useVirtualPreviousViewer ? previousContainerProps : {}"
+          >
             <div class="code-viewer-label">旧版本</div>
-            <div class="code-content" :key="changeKey + '-prev'">
+            <!-- 虚拟滚动模式 -->
+            <div v-if="useVirtualPreviousViewer" class="code-content" v-bind="previousWrapperProps">
+              <div 
+                v-for="{ data: line, index } in virtualPreviousCodeLines" 
+                :key="index" 
+                :data-line="line.number"
+                class="code-line"
+                :class="{ 'code-line--deleted': line.type === 'deleted' }"
+              >
+                <span class="line-number">{{ line.number }}</span>
+                <span class="line-content" v-html="line.content"></span>
+              </div>
+            </div>
+            <!-- 普通渲染模式 -->
+            <div v-else class="code-content">
               <div 
                 v-for="line in previousCodeLines" 
                 :key="line.number" 
@@ -558,9 +926,29 @@ async function sendQuestion() {
             </div>
           </div>
           <!-- 新版本代码 -->
-          <div class="code-viewer" :class="{ 'code-viewer--current': viewMode === 'split' }" ref="codeViewerRef" @scroll="syncScroll('current')">
+          <div 
+            class="code-viewer" 
+            :class="{ 'code-viewer--current': viewMode === 'split' }" 
+            ref="codeViewerRef" 
+            @scroll="syncScroll('current')"
+            v-bind="useVirtualCodeViewer ? codeContainerProps : {}"
+          >
             <div class="code-viewer-label" v-if="viewMode === 'split'">新版本</div>
-            <div class="code-content" :key="changeKey">
+            <!-- 虚拟滚动模式 -->
+            <div v-if="useVirtualCodeViewer" class="code-content" v-bind="codeWrapperProps">
+              <div 
+                v-for="{ data: line, index } in virtualCodeLines" 
+                :key="index" 
+                :data-line="line.number"
+                class="code-line"
+                :class="{ 'code-line--added': line.type === 'added' }"
+              >
+                <span class="line-number">{{ line.number }}</span>
+                <span class="line-content" v-html="line.content"></span>
+              </div>
+            </div>
+            <!-- 普通渲染模式 -->
+            <div v-else class="code-content">
               <div 
                 v-for="line in codeLines" 
                 :key="line.number" 
@@ -589,19 +977,44 @@ async function sendQuestion() {
                 <el-button v-for="q in (suggestions.length > 0 ? suggestions : chat.getDefaultSuggestions()).slice(0,3)" :key="q" size="small" @click="chat.sendMessageStream(q)">{{ q }}</el-button>
               </div>
             </div>
-            <div v-for="msg in chat.messages.value" :key="msg.id" class="chat-message" :class="[`chat-message--${msg.role}`]">
-              <div class="message-avatar">
-                <el-icon v-if="msg.role === 'user'"><User /></el-icon>
-                <el-icon v-else><MagicStick /></el-icon>
+            <!-- 按提交分组显示消息 -->
+            <template v-for="(group, groupIndex) in groupedMessages" :key="groupIndex">
+              <!-- 提交分隔线 -->
+              <div 
+                v-if="group.commitOrder" 
+                class="commit-separator"
+                @click="jumpToCommitOrder(group.commitOrder)"
+                :title="`跳转到第 ${group.commitOrder} 帧`"
+              >
+                <span class="separator-line"></span>
+                <span class="separator-content">
+                  <span class="separator-badge">#{{ group.commitOrder }}</span>
+                  <span class="separator-hash">{{ group.shortHash }}</span>
+                  <span class="separator-message" v-if="group.commitMessage">{{ group.commitMessage.slice(0, 30) }}{{ group.commitMessage.length > 30 ? '...' : '' }}</span>
+                </span>
+                <span class="separator-line"></span>
               </div>
-              <div class="message-content">
-                <div v-if="msg.isLoading && !msg.content" class="loading-dots"><span></span><span></span><span></span></div>
-                <div v-else>
-                  <span v-html="msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content"></span>
-                  <span v-if="msg.isLoading" class="streaming-cursor">▌</span>
+              
+              <!-- 该组的消息 -->
+              <div 
+                v-for="msg in group.messages" 
+                :key="msg.id" 
+                class="chat-message" 
+                :class="[`chat-message--${msg.role}`]"
+              >
+                <div class="message-avatar">
+                  <el-icon v-if="msg.role === 'user'"><User /></el-icon>
+                  <el-icon v-else><MagicStick /></el-icon>
+                </div>
+                <div class="message-content">
+                  <div v-if="msg.isLoading && !msg.content" class="loading-dots"><span></span><span></span><span></span></div>
+                  <div v-else>
+                    <span v-html="msg.role === 'assistant' ? renderMarkdown(msg.content) : msg.content"></span>
+                    <span v-if="msg.isLoading" class="streaming-cursor">▌</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            </template>
           </div>
           <div class="chat-input">
             <el-input v-model="questionInput" placeholder="问AI任何问题..." @keyup.enter="sendQuestion" :disabled="chat.isLoading.value">
@@ -781,5 +1194,196 @@ kbd { padding: 2px 6px; background: var(--bg-tertiary); border: 1px solid var(--
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+/* ========== AI 分析样式 ========== */
+.ai-analysis-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px dashed var(--border-color);
+}
+
+.ai-analysis-btn {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--color-primary);
+}
+
+.ai-analysis-btn:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+  border-color: rgba(99, 102, 241, 0.5);
+}
+
+.quick-summary {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.quick-summary:hover {
+  color: var(--color-primary);
+}
+
+.analysis-popover {
+  margin: -12px;
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.analysis-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.analysis-body {
+  padding: var(--spacing-md);
+}
+
+.analysis-item {
+  margin-bottom: var(--spacing-md);
+}
+
+.analysis-item:last-child {
+  margin-bottom: 0;
+}
+
+.analysis-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.analysis-text {
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.analysis-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.category-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+}
+
+.analysis-scores {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.score-item {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.score-stars {
+  color: #F59E0B;
+  letter-spacing: 1px;
+}
+
+/* ========== 聊天提交标签样式 ========== */
+.commit-badge {
+  float: right;
+  margin-left: var(--spacing-sm);
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  font-family: var(--font-mono);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.15));
+  color: var(--color-primary);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.commit-badge:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(139, 92, 246, 0.3));
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+/* ========== 提交分组分隔线样式 ========== */
+.commit-separator {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-md) 0;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.commit-separator:hover {
+  opacity: 0.8;
+}
+
+.commit-separator:hover .separator-content {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+}
+
+.separator-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-color), transparent);
+}
+
+.separator-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 4px 10px;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  transition: background 0.2s ease;
+}
+
+.separator-badge {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.separator-hash {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.separator-message {
+  color: var(--text-secondary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

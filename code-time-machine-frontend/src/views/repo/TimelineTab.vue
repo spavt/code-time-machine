@@ -2,8 +2,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
-import { fileApi } from '@/api'
-import { ChangeTypeMap, type ChangeType } from '@/types'
+import { fileApi, commitApi } from '@/api'
+import { ChangeTypeMap, ChangeCategoryMap, type ChangeType, type AiAnalysis, type ChangeCategory } from '@/types'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const repoStore = useRepositoryStore()
@@ -11,8 +12,16 @@ const repoStore = useRepositoryStore()
 const selectedFile = ref('')
 const fileList = ref<Array<{ path: string; modifyCount: number }>>([])
 const loading = ref(false)
+const loadingMore = ref(false)
+
+// AI 分析相关状态
+const analysisMap = ref<Map<number, AiAnalysis>>(new Map())
+const analysisLoading = ref<Set<number>>(new Set())
+const expandedAnalysis = ref<Set<number>>(new Set())
 
 const commits = computed(() => repoStore.commitsByOrder)
+const commitsTotal = computed(() => repoStore.commitsTotal)
+const hasMoreCommits = computed(() => repoStore.hasMoreCommits)
 
 onMounted(async () => {
   // 获取文件列表
@@ -58,6 +67,100 @@ function formatDate(dateStr: string) {
     day: 'numeric'
   })
 }
+
+async function loadMore() {
+  if (!repoStore.currentRepo || loadingMore.value) return
+  loadingMore.value = true
+  try {
+    await repoStore.loadMoreCommits(repoStore.currentRepo.id)
+  } finally {
+    loadingMore.value = false
+  }
+}
+
+// ========== AI 分析相关函数 ==========
+
+// 获取或触发 AI 分析
+async function toggleAnalysis(commitId: number) {
+  // 如果已展开，则收起
+  if (expandedAnalysis.value.has(commitId)) {
+    expandedAnalysis.value.delete(commitId)
+    expandedAnalysis.value = new Set(expandedAnalysis.value)
+    return
+  }
+
+  // 如果已有分析结果，直接展开
+  if (analysisMap.value.has(commitId)) {
+    expandedAnalysis.value.add(commitId)
+    expandedAnalysis.value = new Set(expandedAnalysis.value)
+    return
+  }
+
+  // 先尝试获取已有分析
+  await fetchOrTriggerAnalysis(commitId)
+}
+
+async function fetchOrTriggerAnalysis(commitId: number) {
+  if (analysisLoading.value.has(commitId)) return
+
+  analysisLoading.value.add(commitId)
+  analysisLoading.value = new Set(analysisLoading.value)
+
+  try {
+    // 先尝试获取已有分析
+    try {
+      const analysis = await commitApi.getAiAnalysis(commitId)
+      analysisMap.value.set(commitId, analysis)
+      analysisMap.value = new Map(analysisMap.value)
+      expandedAnalysis.value.add(commitId)
+      expandedAnalysis.value = new Set(expandedAnalysis.value)
+      return
+    } catch (e: any) {
+      // 404 表示没有分析，需要触发
+      if (e?.response?.status !== 404 && !e?.message?.includes('404')) {
+        console.log('No existing analysis, triggering new one...')
+      }
+    }
+
+    // 触发新分析
+    ElMessage.info('正在生成 AI 分析，请稍候...')
+    const analysis = await commitApi.triggerAnalysis(commitId)
+    analysisMap.value.set(commitId, analysis)
+    analysisMap.value = new Map(analysisMap.value)
+    expandedAnalysis.value.add(commitId)
+    expandedAnalysis.value = new Set(expandedAnalysis.value)
+    ElMessage.success('AI 分析完成')
+  } catch (e: any) {
+    console.error('AI analysis failed:', e)
+    ElMessage.error('AI 分析失败: ' + (e?.message || '未知错误'))
+  } finally {
+    analysisLoading.value.delete(commitId)
+    analysisLoading.value = new Set(analysisLoading.value)
+  }
+}
+
+function isAnalysisLoading(commitId: number): boolean {
+  return analysisLoading.value.has(commitId)
+}
+
+function isAnalysisExpanded(commitId: number): boolean {
+  return expandedAnalysis.value.has(commitId)
+}
+
+function getAnalysis(commitId: number): AiAnalysis | undefined {
+  return analysisMap.value.get(commitId)
+}
+
+function getCategoryInfo(category: string | undefined) {
+  if (!category) return null
+  return ChangeCategoryMap[category as ChangeCategory] || null
+}
+
+function renderStars(score: number | undefined, max: number = 10): string {
+  if (!score) return ''
+  const filled = Math.round((score / max) * 5)
+  return '★'.repeat(filled) + '☆'.repeat(5 - filled)
+}
 </script>
 
 <template>
@@ -96,7 +199,7 @@ function formatDate(dateStr: string) {
     <div class="timeline-container">
       <div class="timeline-header">
         <h3>提交时间轴</h3>
-        <span class="commit-count">共 {{ commits.length }} 次提交</span>
+        <span class="commit-count">共 {{ commitsTotal }} 次提交</span>
       </div>
 
       <div class="timeline">
@@ -168,14 +271,82 @@ function formatDate(dateStr: string) {
                   还有 {{ commit.fileChanges.length - 5 }} 个文件...
                 </div>
               </div>
+
+              <!-- AI 分析面板 -->
+              <div class="ai-analysis-section">
+                <div 
+                  class="ai-analysis-trigger"
+                  @click="toggleAnalysis(commit.id)"
+                >
+                  <span class="ai-trigger-icon">
+                    <el-icon v-if="isAnalysisLoading(commit.id)" class="is-loading"><Loading /></el-icon>
+                    <el-icon v-else><MagicStick /></el-icon>
+                  </span>
+                  <span class="ai-trigger-text">
+                    {{ isAnalysisLoading(commit.id) ? '分析中...' : 'AI 分析' }}
+                  </span>
+                  <el-icon class="ai-trigger-arrow" :class="{ 'is-expanded': isAnalysisExpanded(commit.id) }">
+                    <ArrowDown />
+                  </el-icon>
+                </div>
+
+                <!-- 展开的分析内容 -->
+                <transition name="slide-fade">
+                  <div v-if="isAnalysisExpanded(commit.id) && getAnalysis(commit.id)" class="ai-analysis-content">
+                    <div class="analysis-item" v-if="getAnalysis(commit.id)?.summary">
+                      <span class="analysis-label">📝 摘要</span>
+                      <p class="analysis-text">{{ getAnalysis(commit.id)?.summary }}</p>
+                    </div>
+                    
+                    <div class="analysis-item" v-if="getAnalysis(commit.id)?.purpose">
+                      <span class="analysis-label">🎯 目的</span>
+                      <p class="analysis-text">{{ getAnalysis(commit.id)?.purpose }}</p>
+                    </div>
+                    
+                    <div class="analysis-item" v-if="getAnalysis(commit.id)?.impact">
+                      <span class="analysis-label">⚡ 影响</span>
+                      <p class="analysis-text">{{ getAnalysis(commit.id)?.impact }}</p>
+                    </div>
+
+                    <div class="analysis-footer">
+                      <!-- 分类标签 -->
+                      <span 
+                        v-if="getCategoryInfo(getAnalysis(commit.id)?.changeCategory)"
+                        class="category-tag"
+                        :style="{ 
+                          background: getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.color + '20',
+                          color: getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.color,
+                          borderColor: getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.color
+                        }"
+                      >
+                        {{ getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.label }}
+                      </span>
+
+                      <!-- 评分 -->
+                      <div class="analysis-scores" v-if="getAnalysis(commit.id)?.complexityScore || getAnalysis(commit.id)?.importanceScore">
+                        <span class="score-item" v-if="getAnalysis(commit.id)?.complexityScore">
+                          <span class="score-label">复杂度</span>
+                          <span class="score-stars">{{ renderStars(getAnalysis(commit.id)?.complexityScore) }}</span>
+                        </span>
+                        <span class="score-item" v-if="getAnalysis(commit.id)?.importanceScore">
+                          <span class="score-label">重要性</span>
+                          <span class="score-stars">{{ renderStars(getAnalysis(commit.id)?.importanceScore) }}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </transition>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- 加载更多 -->
-      <div class="load-more" v-if="commits.length >= 100">
-        <el-button :loading="loading">加载更多</el-button>
+      <div class="load-more" v-if="hasMoreCommits">
+        <el-button :loading="loadingMore" @click="loadMore">
+          加载更多 ({{ commits.length }}/{{ commitsTotal }})
+        </el-button>
       </div>
     </div>
   </div>
@@ -441,5 +612,143 @@ function formatDate(dateStr: string) {
   .timeline-dot {
     left: -23px;
   }
+}
+
+/* ========== AI 分析面板样式 ========== */
+.ai-analysis-section {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-sm);
+  border-top: 1px dashed var(--border-color);
+}
+
+.ai-analysis-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.ai-analysis-trigger:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.2));
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.ai-trigger-icon {
+  color: var(--color-primary);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.ai-trigger-text {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-primary);
+}
+
+.ai-trigger-arrow {
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+
+.ai-trigger-arrow.is-expanded {
+  transform: rotate(180deg);
+}
+
+.ai-analysis-content {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.analysis-item {
+  margin-bottom: var(--spacing-md);
+}
+
+.analysis-item:last-of-type {
+  margin-bottom: var(--spacing-sm);
+}
+
+.analysis-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.analysis-text {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.analysis-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px dashed var(--border-color);
+}
+
+.category-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: var(--radius-full);
+  border: 1px solid;
+}
+
+.analysis-scores {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.score-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+
+.score-label {
+  color: var(--text-muted);
+}
+
+.score-stars {
+  color: #F59E0B;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+/* 过渡动画 */
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.2s ease-in;
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 </style>

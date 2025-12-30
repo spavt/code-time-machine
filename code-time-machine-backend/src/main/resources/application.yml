@@ -4,6 +4,11 @@
 
 server:
   port: 8080
+  # HTTP 响应压缩（性能优化）
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/plain,text/css,application/javascript
+    min-response-size: 1024
 
 spring:
   application:
