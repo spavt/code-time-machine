@@ -430,7 +430,7 @@ function renderStars(score: number | undefined, max: number = 10): string {
   top: 8px;
   width: 16px;
   height: 16px;
-  background: var(--bg-primary);
+  background: var(--bg-main);
   border: 2px solid var(--color-primary);
   border-radius: 50%;
   display: flex;
@@ -528,7 +528,7 @@ function renderStars(score: number | undefined, max: number = 10): string {
   justify-content: center;
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--bg-primary);
+  color: var(--text-inverse);
 }
 
 .commit-stats {

@@ -2,10 +2,12 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
+import { useTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const router = useRouter()
 const repoStore = useRepositoryStore()
+const { isDarkMode, toggleTheme } = useTheme()
 
 const loading = ref(true)
 const activeTab = ref('overview')
@@ -54,6 +56,10 @@ function handleTabChange(tab: string) {
           </div>
         </div>
         <div class="header-right">
+          <el-button circle class="icon-btn" @click="toggleTheme" :title="isDarkMode ? '切换到浅色模式' : '切换到深色模式'">
+            <span v-if="isDarkMode">☀️</span>
+            <span v-else>🌙</span>
+          </el-button>
           <el-button type="primary" @click="goToTimeline">
             <el-icon><VideoPlay /></el-icon>
             进入时光机
@@ -158,6 +164,23 @@ function handleTabChange(tab: string) {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.icon-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
 }
 
 .repo-title {

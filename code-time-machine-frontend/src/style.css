@@ -3,7 +3,7 @@
    Design: Nebula / Glassmorphism / Clean Dark
    ===================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap');
 
 :root {
   /* --- Palette: Nebula Dark --- */
@@ -78,6 +78,29 @@
   --duration-normal: 0.3s;
   --transition-fast: 0.2s ease;
   --transition-normal: 0.3s ease;
+
+  /* --- Cinematic Theme (Film Reel Aesthetic) --- */
+  /* Typography */
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-code: 'Source Code Pro', 'JetBrains Mono', monospace;
+
+  /* Film Reel Colors */
+  --color-amber: #F6B93B;
+  --color-amber-glow: rgba(246, 185, 59, 0.3);
+  --color-amber-soft: rgba(246, 185, 59, 0.15);
+  --color-film-dark: #1a1a2e;
+  --color-film-darker: #0f0f1a;
+  --color-film-border: #2a2a3e;
+  --color-projector-light: rgba(255, 248, 220, 0.9);
+
+  /* Film Strip Dimensions */
+  --film-sprocket-size: 8px;
+  --film-strip-height: 48px;
+
+  /* Theatrical Shadows */
+  --shadow-vignette: inset 0 0 100px rgba(0, 0, 0, 0.4);
+  --shadow-projector: 0 0 60px rgba(246, 185, 59, 0.2);
+  --shadow-mechanical: 0 4px 0 rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
 /* =====================================================
@@ -105,18 +128,42 @@ body.light-theme {
   --bg-glass: rgba(255, 255, 255, 0.7);
   --bg-glass-hover: rgba(255, 255, 255, 0.9);
   --bg-hover: rgba(0, 0, 0, 0.03);
-  --code-bg: #f8fafc;
+  --code-bg: #ffffff;
 
   /* Text - inverted for light mode */
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #64748b;
   --text-dark: #0f172a;
+  --text-inverse: #ffffff;
 
   /* Borders - darker for visibility */
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-highlight: rgba(147, 51, 234, 0.5);
+
+  /* Shadows for light mode */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+
+  /* Code line highlights */
+  --code-line-added-bg: rgba(22, 163, 74, 0.15);
+  --code-line-added-border: #16a34a;
+  --code-line-deleted-bg: rgba(220, 38, 38, 0.15);
+  --code-line-deleted-border: #dc2626;
+}
+
+/* Default dark theme shadow and code line variables */
+:root {
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --text-inverse: #0f172a;
+  --code-line-added-bg: rgba(46, 160, 67, 0.15);
+  --code-line-added-border: #2ea043;
+  --code-line-deleted-bg: rgba(248, 81, 73, 0.15);
+  --code-line-deleted-border: #f85149;
 }
 
 /* Light theme specific overrides */
@@ -155,6 +202,10 @@ body.light-theme .el-input__inner {
   color: #0f172a !important;
 }
 
+body.light-theme .el-input__inner::placeholder {
+  color: #94a3b8 !important;
+}
+
 body.light-theme .el-card {
   background: rgba(255, 255, 255, 0.9) !important;
   border: 1px solid rgba(0, 0, 0, 0.08) !important;
@@ -173,12 +224,119 @@ body.light-theme .el-dialog__body {
   color: #475569 !important;
 }
 
+/* Select dropdown */
+body.light-theme .el-select-dropdown {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-theme .el-select-dropdown__item {
+  color: #0f172a !important;
+}
+
+body.light-theme .el-select-dropdown__item:hover {
+  background: rgba(147, 51, 234, 0.08) !important;
+}
+
+body.light-theme .el-select-dropdown__item.is-selected {
+  color: hsl(250, 85%, 55%) !important;
+  background: rgba(147, 51, 234, 0.1) !important;
+}
+
+/* Popover */
+body.light-theme .el-popover {
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-theme .el-popover__title {
+  color: #0f172a !important;
+}
+
+/* Timeline */
+body.light-theme .el-timeline-item__content {
+  color: #0f172a !important;
+}
+
+body.light-theme .el-timeline-item__timestamp {
+  color: #64748b !important;
+}
+
+/* Tag */
+body.light-theme .el-tag {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Slider */
+body.light-theme .el-slider__runway {
+  background-color: #e2e8f0 !important;
+}
+
+body.light-theme .el-slider__bar {
+  background: linear-gradient(90deg, hsl(250, 85%, 55%), #9333ea) !important;
+}
+
+/* Tabs */
+body.light-theme .el-tabs__item {
+  color: #64748b !important;
+}
+
+body.light-theme .el-tabs__item.is-active {
+  color: hsl(250, 85%, 55%) !important;
+}
+
+/* Progress */
+body.light-theme .el-progress__text {
+  color: #0f172a !important;
+}
+
+/* Scrollbar */
 body.light-theme ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
 }
 
 body.light-theme ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* Highlight.js - Light Theme Override */
+body.light-theme .hljs {
+  background: #ffffff !important;
+  color: #24292e !important;
+}
+
+body.light-theme .hljs-keyword,
+body.light-theme .hljs-selector-tag {
+  color: #d73a49 !important;
+}
+
+body.light-theme .hljs-string,
+body.light-theme .hljs-attr {
+  color: #032f62 !important;
+}
+
+body.light-theme .hljs-number,
+body.light-theme .hljs-literal {
+  color: #005cc5 !important;
+}
+
+body.light-theme .hljs-comment {
+  color: #6a737d !important;
+}
+
+body.light-theme .hljs-function,
+body.light-theme .hljs-title {
+  color: #6f42c1 !important;
+}
+
+body.light-theme .hljs-variable,
+body.light-theme .hljs-template-variable {
+  color: #e36209 !important;
+}
+
+body.light-theme .hljs-type,
+body.light-theme .hljs-class {
+  color: #22863a !important;
 }
 
 /* Base Setup */

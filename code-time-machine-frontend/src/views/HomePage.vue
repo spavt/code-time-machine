@@ -293,8 +293,8 @@ async function deleteRepo(repo: Repository, event: Event) {
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
-  background: rgba(var(--primary-hue), 95%, 65%, 0.1);
-  border: 1px solid rgba(var(--primary-hue), 95%, 65%, 0.2);
+  background: var(--color-primary-glow);
+  border: 1px solid var(--border-highlight);
   border-radius: 100px;
   color: var(--color-primary);
   font-size: 0.85rem;
@@ -338,7 +338,7 @@ async function deleteRepo(repo: Repository, event: Event) {
 }
 
 .glass-btn {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-glass);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   height: 48px;
@@ -350,7 +350,7 @@ async function deleteRepo(repo: Repository, event: Event) {
 }
 
 .glass-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-glass-hover);
 }
 
 /* Features */
@@ -382,7 +382,7 @@ async function deleteRepo(repo: Repository, event: Event) {
   width: 56px;
   height: 56px;
   border-radius: 16px;
-  background: rgba(var(--primary-hue), 95%, 65%, 0.1);
+  background: var(--color-primary-glow);
   color: var(--color-primary);
   display: flex;
   align-items: center;
@@ -392,12 +392,12 @@ async function deleteRepo(repo: Repository, event: Event) {
 }
 
 .icon-sport.purple {
-  background: rgba(192, 132, 252, 0.1);
+  background: color-mix(in srgb, var(--color-purple) 15%, transparent);
   color: var(--color-purple);
 }
 
 .icon-sport.blue {
-  background: rgba(56, 189, 248, 0.1);
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
   color: var(--color-accent);
 }
 

@@ -319,7 +319,7 @@ const activityHeatmapOption = computed(() => {
   justify-content: center;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--bg-primary);
+  color: var(--text-inverse);
 }
 
 .col-commits {

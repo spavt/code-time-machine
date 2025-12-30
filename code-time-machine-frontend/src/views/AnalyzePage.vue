@@ -3,12 +3,14 @@ import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
+import { useTheme } from '@/composables/useTheme'
 import { DepthPresets } from '@/types'
 import { ElMessage } from 'element-plus'
 import { Setting, QuestionFilled, ArrowDown, InfoFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const repoStore = useRepositoryStore()
+const { isDarkMode, toggleTheme } = useTheme()
 const { analyzing, analyzeProgress } = storeToRefs(repoStore)
 
 const repoUrl = ref('')
@@ -114,6 +116,12 @@ function goBack() {
         <div class="logo" @click="goBack" style="cursor: pointer;">
           <el-icon class="logo-icon"><Clock /></el-icon>
           <span class="logo-text">Code Time Machine</span>
+        </div>
+        <div class="header-actions">
+          <el-button circle class="icon-btn" @click="toggleTheme" :title="isDarkMode ? '切换到浅色模式' : '切换到深色模式'">
+            <span v-if="isDarkMode">☀️</span>
+            <span v-else>🌙</span>
+          </el-button>
         </div>
       </div>
     </header>
@@ -366,6 +374,24 @@ function goBack() {
   height: 64px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.icon-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.icon-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
 }
 
 .logo {
