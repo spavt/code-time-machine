@@ -356,8 +356,6 @@ export interface LineChange {
 
 /**
  * 使用 Myers diff 算法计算变更行
- * 时间复杂度: O(n*d)，其中 n 是行数，d 是差异大小
- * 相比原来的 O(n²) 实现，对于大文件和小改动有显著提升
  */
 export function computeChangedLines(
   oldContent: string,

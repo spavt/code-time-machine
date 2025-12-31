@@ -249,8 +249,18 @@ export const fileApi = {
     content: string
   }>> {
     return api.get(`/file/method-timeline/${repoId}`, { params: { filePath, methodName } })
+  },
+
+  // 批量获取文件内容（用于预加载优化）
+  getBatchContent(repoId: number, commitIds: number[], filePath: string): Promise<Record<number, {
+    content: string
+    language: string
+    lineCount: number
+  }>> {
+    return api.post('/file/content/batch', { repoId, commitIds, filePath })
   }
 }
+
 
 // =====================================================
 // AI聊天相关API

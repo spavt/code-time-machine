@@ -54,6 +54,16 @@ const currentAnalysis = ref<AiAnalysis | null>(null)
 const analysisLoading = ref(false)
 const showAnalysisPopover = ref(false)
 
+// 播放器界面风格切换
+const playerStyle = ref<'classic' | 'cinematic'>(
+  (localStorage.getItem('playerStyle') as 'classic' | 'cinematic') || 'cinematic'
+)
+
+function togglePlayerStyle() {
+  playerStyle.value = playerStyle.value === 'cinematic' ? 'classic' : 'cinematic'
+  localStorage.setItem('playerStyle', playerStyle.value)
+}
+
 // 根据追踪模式切换数据源
 const commits = computed(() => {
   if (trackingMode.value === 'method' && methodTimelineData.value.length > 0) {
@@ -123,7 +133,11 @@ function ensureCommitContent(commit: TimelineCommit | null | undefined): Promise
   return loadingPromise
 }
 
-// 滑动窗口预加载：预加载当前帧前后各 PRELOAD_WINDOW_SIZE 帧
+// 滑动窗口预加载：使用批量 API 预加载周围帧（不包括当前帧）
+// 当前帧仍然使用 ensureCommitContent 单独加载，确保即时显示
+// 标记是否正在批量加载，避免重复请求
+let batchLoadingPromise: Promise<void> | null = null
+
 function preloadWindow(centerIndex: number) {
   if (trackingMode.value !== 'file') return
   
@@ -131,19 +145,55 @@ function preloadWindow(centerIndex: number) {
   const start = Math.max(0, centerIndex - PRELOAD_WINDOW_SIZE)
   const end = Math.min(commitList.length - 1, centerIndex + PRELOAD_WINDOW_SIZE)
   
+  // 收集需要预加载的 commitIds（排除当前帧，当前帧单独加载）
+  const toLoad: number[] = []
   for (let i = start; i <= end; i++) {
+    // 跳过当前帧，当前帧由 watch 中的 ensureCommitContent 处理
+    if (i === centerIndex) continue
+    
     const commit = commitList[i]
-    if (commit && commit.content == null) {
-      // 使用 void 避免阻塞，后台静默加载
-      void ensureCommitContent(commit).then(() => {
-        // 加载完成后预计算高亮
-        if (commit.content) {
-          getCachedHighlight(commit.id, commit.content)
-        }
-      })
+    if (commit && commit.content == null && !contentLoading.has(commit.id)) {
+      toLoad.push(commit.id)
     }
   }
+  
+  if (toLoad.length === 0) return
+  
+  // 如果已经在批量加载中，跳过（不影响当前帧）
+  if (batchLoadingPromise) return
+  
+  // 批量请求（后台静默加载，不阻塞）
+  batchLoadingPromise = (async () => {
+    try {
+      const results = await fileApi.getBatchContent(repoId.value, toLoad, filePath.value)
+      
+      // 将结果填充到对应的 commit 对象中
+      for (const [commitIdStr, data] of Object.entries(results)) {
+        const commitId = Number(commitIdStr)
+        const commit = commitList.find(c => c.id === commitId)
+        if (commit && commit.content == null) {
+          commit.content = data.content
+          // 预计算高亮
+          if (data.content) {
+            getCachedHighlight(commit.id, data.content)
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Batch preload failed, falling back to individual requests:', e)
+      // 降级：逐个加载
+      for (const commitId of toLoad) {
+        const commit = commitList.find(c => c.id === commitId)
+        if (commit && commit.content == null) {
+          void ensureCommitContent(commit)
+        }
+      }
+    } finally {
+      batchLoadingPromise = null
+    }
+  })()
 }
+
 
 // 获取缓存的高亮代码，若未缓存则计算并缓存
 function getCachedHighlight(commitId: number, content: string): string {
@@ -733,7 +783,7 @@ watch(() => player.currentCommit.value?.id, () => {
 </script>
 
 <template>
-  <div class="player-page" :class="{ 'is-playing': player.isPlaying.value }" v-loading="loading">
+  <div class="player-page" :class="[`player-page--${playerStyle}`, { 'is-playing': player.isPlaying.value }]" v-loading="loading">
     <header class="player-header">
       <div class="header-left">
         <el-button text @click="goBack"><el-icon><ArrowLeft /></el-icon> 返回</el-button>
@@ -797,6 +847,12 @@ watch(() => player.currentCommit.value?.id, () => {
         <el-button :type="showChat ? 'primary' : 'default'" @click="showChat = !showChat">
           <el-icon><ChatDotRound /></el-icon> {{ showChat ? '关闭' : 'AI对话' }}
         </el-button>
+        <el-tooltip :content="playerStyle === 'cinematic' ? '切换到经典风格' : '切换到电影风格'" placement="bottom">
+          <el-button @click="togglePlayerStyle" class="style-toggle-btn">
+            <el-icon><component :is="playerStyle === 'cinematic' ? 'Film' : 'Monitor'" /></el-icon>
+            {{ playerStyle === 'cinematic' ? '电影' : '经典' }}
+          </el-button>
+        </el-tooltip>
       </div>
     </header>
 
@@ -2025,5 +2081,314 @@ kbd {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
   40% { transform: scale(1); opacity: 1; }
 }
+
+/* =====================================================
+   CLASSIC STYLE - 经典简洁风格
+   Original minimal design with standard accents
+   ===================================================== */
+
+/* Style Toggle Button */
+.style-toggle-btn {
+  transition: all 0.3s ease;
+}
+
+/* --- Classic Style Overrides --- */
+.player-page--classic {
+  background: var(--bg-main);
+}
+
+.player-page--classic::before {
+  display: none; /* 移除胶片纹理 */
+}
+
+.player-page--classic .player-header {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  height: 56px;
+}
+
+.player-page--classic .player-header::before,
+.player-page--classic .player-header::after {
+  display: none; /* 移除装饰性菱形 */
+}
+
+.player-page--classic .file-info {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.player-page--classic .file-icon {
+  color: var(--color-accent);
+}
+
+.player-page--classic .file-path {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.player-page--classic .commit-order {
+  background: var(--color-primary-glow);
+  color: var(--color-primary);
+  border: none;
+  font-family: var(--font-mono);
+}
+
+.player-page--classic .commit-panel {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.player-page--classic .commit-panel::before {
+  display: none;
+}
+
+.player-page--classic .commit-message {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: normal;
+}
+
+.player-page--classic .commit-meta {
+  font-family: inherit;
+}
+
+.player-page--classic .additions {
+  color: var(--color-success) !important;
+}
+
+.player-page--classic .deletions {
+  color: var(--color-danger) !important;
+}
+
+.player-page--classic .code-viewer {
+  background: var(--code-bg);
+}
+
+.player-page--classic .code-viewers::after {
+  display: none; /* 移除暗角效果 */
+}
+
+.player-page--classic .code-viewers--split::before {
+  display: none; /* 移除胶片孔洞分隔线 */
+}
+
+.player-page--classic .code-viewers--split {
+  gap: 1px;
+  background: var(--border-color);
+}
+
+.player-page--classic .code-viewer-label {
+  background: var(--bg-tertiary);
+  font-family: inherit;
+  letter-spacing: 0.5px;
+}
+
+.player-page--classic .code-viewer--previous .code-viewer-label {
+  color: #f85149;
+}
+
+.player-page--classic .code-viewer--current .code-viewer-label {
+  color: #2ea043;
+}
+
+.player-page--classic .code-line {
+  transition: background-color 0.3s ease;
+}
+
+.player-page--classic .code-line:hover {
+  background: var(--bg-hover);
+}
+
+.player-page--classic .code-line--added {
+  background: rgba(46, 160, 67, 0.15);
+  border-left: 3px solid #2ea043;
+  animation: classic-highlight-pulse 2s ease-out;
+}
+
+.player-page--classic .code-line--added .line-number {
+  color: #2ea043;
+}
+
+@keyframes classic-highlight-pulse {
+  0% { background: rgba(46, 160, 67, 0.4); }
+  50% { background: rgba(46, 160, 67, 0.25); }
+  100% { background: rgba(46, 160, 67, 0.15); }
+}
+
+.player-page--classic .code-line--deleted {
+  background: rgba(248, 81, 73, 0.15);
+  border-left: 3px solid #f85149;
+  animation: classic-delete-pulse 2s ease-out;
+}
+
+.player-page--classic .code-line--deleted .line-number {
+  color: #f85149;
+}
+
+@keyframes classic-delete-pulse {
+  0% { background: rgba(248, 81, 73, 0.4); }
+  50% { background: rgba(248, 81, 73, 0.25); }
+  100% { background: rgba(248, 81, 73, 0.15); }
+}
+
+/* Classic Chat Section */
+.player-page--classic .chat-section {
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-color);
+  box-shadow: none;
+}
+
+.player-page--classic .chat-section::before {
+  display: none;
+}
+
+.player-page--classic .chat-header {
+  background: transparent;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.player-page--classic .chat-header h3 {
+  font-family: inherit;
+  color: var(--color-primary);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.player-page--classic .chat-message--user .message-avatar {
+  background: var(--color-accent);
+}
+
+.player-page--classic .chat-message--assistant .message-avatar {
+  background: var(--color-primary);
+}
+
+.player-page--classic .chat-message--user .message-content {
+  background: var(--color-accent);
+}
+
+.player-page--classic .chat-message--assistant .message-content {
+  background: var(--bg-secondary);
+  border: none;
+}
+
+.player-page--classic .chat-message--assistant .message-content :deep(code) {
+  background: rgba(var(--color-primary-rgb), 0.15);
+  color: var(--color-primary);
+}
+
+.player-page--classic .chat-input {
+  background: transparent;
+}
+
+/* Classic Footer */
+.player-page--classic .player-footer {
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-color);
+  padding: var(--spacing-md) var(--spacing-xl);
+}
+
+.player-page--classic .timeline-slider {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.player-page--classic .timeline-slider::before,
+.player-page--classic .timeline-slider::after {
+  display: none; /* 移除胶片孔洞 */
+}
+
+.player-page--classic .progress-current {
+  color: var(--color-primary);
+  text-shadow: none;
+}
+
+.player-page--classic .player-controls :deep(.el-button) {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.player-page--classic .player-controls :deep(.el-button:hover:not(:disabled)) {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
+  box-shadow: none;
+}
+
+.player-page--classic .play-button {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+  background: var(--color-primary) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--bg-primary) !important;
+  font-size: 18px !important;
+}
+
+.player-page--classic .play-button:hover {
+  transform: none !important;
+  opacity: 0.9;
+}
+
+.player-page--classic .player-controls :deep(.el-select .el-input__wrapper) {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+.player-page--classic .player-controls :deep(.el-select .el-input__inner) {
+  color: var(--text-primary) !important;
+  font-weight: normal;
+}
+
+.player-page--classic kbd {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Classic: 移除播放动画 */
+.player-page--classic.is-playing .timeline-slider::before,
+.player-page--classic.is-playing .timeline-slider::after {
+  animation: none;
+}
+
+/* Classic AI Analysis */
+.player-page--classic .ai-analysis-btn {
+  background: rgba(var(--color-primary-rgb), 0.1) !important;
+  border-color: rgba(var(--color-primary-rgb), 0.3) !important;
+  color: var(--color-primary) !important;
+}
+
+.player-page--classic .ai-analysis-btn:hover {
+  background: rgba(var(--color-primary-rgb), 0.2) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.player-page--classic .quick-summary:hover {
+  color: var(--color-primary);
+}
+
+.player-page--classic .streaming-cursor {
+  color: var(--color-primary);
+}
+
+/* Classic Story Dialog */
+.player-page--classic .story-milestones {
+  border-top-color: var(--border-color);
+}
+
+.player-page--classic .story-milestones h4 {
+  color: var(--color-primary);
+}
 </style>
+
 

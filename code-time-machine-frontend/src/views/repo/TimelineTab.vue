@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useVirtualList } from '@vueuse/core'
 import { useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
 import { fileApi, commitApi } from '@/api'
@@ -22,6 +23,26 @@ const expandedAnalysis = ref<Set<number>>(new Set())
 const commits = computed(() => repoStore.commitsByOrder)
 const commitsTotal = computed(() => repoStore.commitsTotal)
 const hasMoreCommits = computed(() => repoStore.hasMoreCommits)
+
+// ========== 虚拟滚动配置 ==========
+const VIRTUAL_THRESHOLD = 50  // 超过 50 条启用虚拟滚动
+const TIMELINE_ITEM_HEIGHT = 220  // 估算每个 commit 卡片高度（包含边距）
+
+const useVirtualTimeline = computed(() => commits.value.length > VIRTUAL_THRESHOLD)
+
+// 为每个 commit 添加原始索引
+const commitsWithIndex = computed(() => 
+  commits.value.map((commit, index) => ({ ...commit, _index: index }))
+)
+
+const {
+  list: virtualCommits,
+  containerProps: timelineContainerProps,
+  wrapperProps: timelineWrapperProps
+} = useVirtualList(commitsWithIndex, {
+  itemHeight: TIMELINE_ITEM_HEIGHT
+})
+
 
 onMounted(async () => {
   // 获取文件列表
@@ -199,10 +220,110 @@ function renderStars(score: number | undefined, max: number = 10): string {
     <div class="timeline-container">
       <div class="timeline-header">
         <h3>提交时间轴</h3>
-        <span class="commit-count">共 {{ commitsTotal }} 次提交</span>
+        <span class="commit-count">
+          共 {{ commitsTotal }} 次提交
+          <span v-if="useVirtualTimeline" class="virtual-hint">(虚拟滚动已启用)</span>
+        </span>
       </div>
 
-      <div class="timeline">
+      <!-- 虚拟滚动模式 -->
+      <div 
+        v-if="useVirtualTimeline"
+        class="timeline timeline--virtual"
+        v-bind="timelineContainerProps"
+      >
+        <div class="timeline-line"></div>
+        <div v-bind="timelineWrapperProps">
+          <div 
+            v-for="{ data: commit } in virtualCommits" 
+            :key="commit.id"
+            class="timeline-item"
+            :class="{ 'timeline-item--first': commit._index === 0 }"
+          >
+            <div class="timeline-dot">
+              <span class="dot-inner"></span>
+            </div>
+            
+            <div class="timeline-content">
+              <div class="commit-card">
+                <div class="commit-header">
+                  <span class="commit-order">#{{ commit._index + 1 }}</span>
+                  <span class="commit-hash">{{ commit.shortHash }}</span>
+                  <span class="commit-date">{{ formatDate(commit.commitTime) }}</span>
+                </div>
+                
+                <p class="commit-message">{{ commit.commitMessage }}</p>
+                
+                <div class="commit-details">
+                  <div class="commit-author">
+                    <div class="author-avatar">
+                      {{ commit.authorName.charAt(0).toUpperCase() }}
+                    </div>
+                    <span>{{ commit.authorName }}</span>
+                  </div>
+                  
+                  <div class="commit-stats">
+                    <span class="files-changed" v-if="commit.filesChanged !== null">
+                      <el-icon><Document /></el-icon>
+                      {{ commit.filesChanged }} 文件
+                    </span>
+                    <span class="stats-loading" v-else>
+                      <el-icon class="is-loading"><Loading /></el-icon>
+                    </span>
+                    <template v-if="commit.additions !== null">
+                      <span class="additions">+{{ commit.additions }}</span>
+                      <span class="deletions">-{{ commit.deletions }}</span>
+                    </template>
+                    <span class="stats-loading-text" v-else>计算中...</span>
+                  </div>
+                </div>
+
+                <!-- 文件变更列表 -->
+                <div class="file-changes" v-if="commit.fileChanges && commit.fileChanges.length > 0">
+                  <div 
+                    v-for="file in commit.fileChanges.slice(0, 5)" 
+                    :key="file.id"
+                    class="file-change"
+                  >
+                    <span 
+                      class="change-type"
+                      :style="{ color: getChangeTypeInfo(file.changeType).color }"
+                    >
+                      {{ getChangeTypeInfo(file.changeType).label }}
+                    </span>
+                    <span class="file-path">{{ file.filePath }}</span>
+                  </div>
+                  <div 
+                    v-if="commit.fileChanges.length > 5" 
+                    class="more-files"
+                  >
+                    还有 {{ commit.fileChanges.length - 5 }} 个文件...
+                  </div>
+                </div>
+
+                <!-- AI 分析按钮（虚拟滚动模式下简化显示） -->
+                <div class="ai-analysis-section">
+                  <div 
+                    class="ai-analysis-trigger"
+                    @click="toggleAnalysis(commit.id)"
+                  >
+                    <span class="ai-trigger-icon">
+                      <el-icon v-if="isAnalysisLoading(commit.id)" class="is-loading"><Loading /></el-icon>
+                      <el-icon v-else><MagicStick /></el-icon>
+                    </span>
+                    <span class="ai-trigger-text">
+                      {{ isAnalysisLoading(commit.id) ? '分析中...' : 'AI 分析' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 普通渲染模式 -->
+      <div v-else class="timeline">
         <div class="timeline-line"></div>
         
         <div 
@@ -342,6 +463,7 @@ function renderStars(score: number | undefined, max: number = 10): string {
         </div>
       </div>
 
+
       <!-- 加载更多 -->
       <div class="load-more" v-if="hasMoreCommits">
         <el-button :loading="loadingMore" @click="loadMore">
@@ -400,10 +522,32 @@ function renderStars(score: number | undefined, max: number = 10): string {
   font-size: 0.9rem;
 }
 
+.virtual-hint {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  background: var(--color-success);
+  color: white;
+  border-radius: var(--radius-full);
+}
+
 .timeline {
   position: relative;
   padding-left: 40px;
 }
+
+/* 虚拟滚动模式样式 */
+.timeline--virtual {
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.timeline-item {
+  min-height: 200px;  /* 确保虚拟滚动高度一致 */
+}
+
 
 .timeline-line {
   position: absolute;
