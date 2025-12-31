@@ -54,14 +54,22 @@ const currentAnalysis = ref<AiAnalysis | null>(null)
 const analysisLoading = ref(false)
 const showAnalysisPopover = ref(false)
 
-// 播放器界面风格切换
-const playerStyle = ref<'classic' | 'cinematic'>(
-  (localStorage.getItem('playerStyle') as 'classic' | 'cinematic') || 'cinematic'
+// 播放器界面风格切换 - 支持多种风格
+type PlayerStyleType = 'cinematic' | 'classic' | 'neon' | 'glassmorphism'
+const playerStyle = ref<PlayerStyleType>(
+  (localStorage.getItem('playerStyle') as PlayerStyleType) || 'cinematic'
 )
 
-function togglePlayerStyle() {
-  playerStyle.value = playerStyle.value === 'cinematic' ? 'classic' : 'cinematic'
-  localStorage.setItem('playerStyle', playerStyle.value)
+const styleOptions = [
+  { value: 'cinematic', label: '🎬 电影', desc: 'Art Deco 风格' },
+  { value: 'classic', label: '💻 经典', desc: '简洁现代' },
+  { value: 'neon', label: '🌈 霓虹', desc: '赛博朋克' },
+  { value: 'glassmorphism', label: '🪟 玻璃', desc: '毛玻璃效果' }
+]
+
+function onStyleChange(value: PlayerStyleType) {
+  playerStyle.value = value
+  localStorage.setItem('playerStyle', value)
 }
 
 // 根据追踪模式切换数据源
@@ -849,12 +857,23 @@ watch(() => player.currentCommit.value?.id, () => {
         <el-button :type="showChat ? 'primary' : 'default'" @click="showChat = !showChat">
           <el-icon><ChatDotRound /></el-icon> {{ showChat ? '关闭' : 'AI对话' }}
         </el-button>
-        <el-tooltip :content="playerStyle === 'cinematic' ? '切换到经典风格' : '切换到电影风格'" placement="bottom">
-          <el-button @click="togglePlayerStyle" class="style-toggle-btn">
-            <el-icon><component :is="playerStyle === 'cinematic' ? 'Film' : 'Monitor'" /></el-icon>
-            {{ playerStyle === 'cinematic' ? '电影' : '经典' }}
-          </el-button>
-        </el-tooltip>
+        <el-select 
+          v-model="playerStyle" 
+          @change="onStyleChange" 
+          size="small" 
+          class="style-selector"
+          style="width: 120px;"
+        >
+          <el-option
+            v-for="opt in styleOptions"
+            :key="opt.value"
+            :label="opt.label"
+            :value="opt.value"
+          >
+            <span>{{ opt.label }}</span>
+            <span class="style-option-desc">{{ opt.desc }}</span>
+          </el-option>
+        </el-select>
       </div>
     </header>
 
@@ -2391,6 +2410,551 @@ kbd {
 .player-page--classic .story-milestones h4 {
   color: var(--color-primary);
 }
+
+/* =====================================================
+   STYLE SELECTOR STYLING
+   ===================================================== */
+.style-selector .el-input__wrapper {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid var(--color-film-border) !important;
+}
+
+.style-option-desc {
+  float: right;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* =====================================================
+   NEON STYLE - 霓虹赛博朋克风格
+   Cyberpunk with glowing effects and electric colors
+   ===================================================== */
+
+.player-page--neon {
+  background: linear-gradient(135deg, #0a0a15 0%, #1a0a2e 50%, #0a1a2e 100%);
+}
+
+.player-page--neon::before {
+  background: 
+    radial-gradient(ellipse at 20% 20%, rgba(0, 255, 255, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(255, 0, 255, 0.03) 0%, transparent 50%);
+  opacity: 1;
+}
+
+.player-page--neon .player-header {
+  background: rgba(10, 10, 25, 0.95);
+  border-bottom: 2px solid rgba(0, 255, 255, 0.3);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+}
+
+.player-page--neon .player-header::before,
+.player-page--neon .player-header::after {
+  color: #00ffff;
+  text-shadow: 0 0 10px #00ffff;
+}
+
+.player-page--neon .file-info {
+  background: rgba(0, 255, 255, 0.05);
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.1);
+}
+
+.player-page--neon .file-icon {
+  color: #00ffff;
+  text-shadow: 0 0 8px #00ffff;
+}
+
+.player-page--neon .commit-order {
+  background: rgba(255, 0, 255, 0.15);
+  color: #ff00ff;
+  border: 1px solid rgba(255, 0, 255, 0.3);
+  text-shadow: 0 0 8px #ff00ff;
+}
+
+.player-page--neon .commit-panel {
+  background: linear-gradient(90deg, rgba(10, 10, 25, 0.95) 0%, rgba(20, 10, 35, 0.9) 50%, rgba(10, 10, 25, 0.95) 100%);
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.player-page--neon .commit-panel::before {
+  background: linear-gradient(180deg, #00ffff, #ff00ff);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+.player-page--neon .commit-message {
+  color: #fff;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+}
+
+.player-page--neon .additions {
+  color: #00ff88 !important;
+  text-shadow: 0 0 8px #00ff88;
+}
+
+.player-page--neon .deletions {
+  color: #ff4488 !important;
+  text-shadow: 0 0 8px #ff4488;
+}
+
+.player-page--neon .code-viewers::after {
+  box-shadow: inset 0 0 80px rgba(0, 255, 255, 0.05);
+}
+
+.player-page--neon .code-viewer-label {
+  background: rgba(10, 10, 25, 0.95);
+  border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.player-page--neon .code-viewer--previous .code-viewer-label {
+  color: #ff4488;
+  text-shadow: 0 0 8px #ff4488;
+}
+
+.player-page--neon .code-viewer--current .code-viewer-label {
+  color: #00ff88;
+  text-shadow: 0 0 8px #00ff88;
+}
+
+.player-page--neon .code-line--added {
+  background: rgba(0, 255, 136, 0.1);
+  border-left: 3px solid #00ff88;
+  box-shadow: inset 0 0 30px rgba(0, 255, 136, 0.05);
+}
+
+.player-page--neon .code-line--added .line-number {
+  color: #00ff88;
+  text-shadow: 0 0 5px #00ff88;
+}
+
+.player-page--neon .code-line--deleted {
+  background: rgba(255, 68, 136, 0.1);
+  border-left: 3px solid #ff4488;
+  box-shadow: inset 0 0 30px rgba(255, 68, 136, 0.05);
+}
+
+.player-page--neon .code-line--deleted .line-number {
+  color: #ff4488;
+  text-shadow: 0 0 5px #ff4488;
+}
+
+.player-page--neon .code-line:hover {
+  background: rgba(0, 255, 255, 0.03);
+}
+
+/* Neon Chat Section */
+.player-page--neon .chat-section {
+  background: linear-gradient(180deg, rgba(10, 10, 25, 0.98) 0%, rgba(15, 5, 25, 1) 100%);
+  border-left: 2px solid rgba(255, 0, 255, 0.3);
+  box-shadow: -5px 0 30px rgba(255, 0, 255, 0.1);
+}
+
+.player-page--neon .chat-section::before {
+  display: none;
+}
+
+.player-page--neon .chat-header {
+  background: linear-gradient(180deg, rgba(255, 0, 255, 0.1) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(255, 0, 255, 0.2);
+}
+
+.player-page--neon .chat-header h3 {
+  color: #ff00ff;
+  text-shadow: 0 0 10px #ff00ff;
+}
+
+.player-page--neon .chat-message--user .message-avatar {
+  background: linear-gradient(135deg, #00ffff, #0088ff);
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+}
+
+.player-page--neon .chat-message--assistant .message-avatar {
+  background: linear-gradient(135deg, #ff00ff, #8800ff);
+  box-shadow: 0 0 15px rgba(255, 0, 255, 0.4);
+}
+
+.player-page--neon .chat-message--user .message-content {
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.15), rgba(0, 136, 255, 0.15));
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  color: #fff;
+}
+
+.player-page--neon .chat-message--assistant .message-content {
+  background: rgba(15, 15, 30, 0.8);
+  border: 1px solid rgba(255, 0, 255, 0.2);
+}
+
+.player-page--neon .chat-message--assistant .message-content :deep(code) {
+  background: rgba(0, 255, 255, 0.1);
+  color: #00ffff;
+  text-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
+}
+
+/* Neon Footer */
+.player-page--neon .player-footer {
+  background: linear-gradient(180deg, rgba(15, 10, 25, 0.98) 0%, rgba(10, 10, 20, 1) 100%);
+  border-top: 2px solid rgba(0, 255, 255, 0.2);
+}
+
+.player-page--neon .timeline-slider {
+  background: rgba(10, 10, 25, 0.8);
+  border: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.player-page--neon .timeline-slider::before,
+.player-page--neon .timeline-slider::after {
+  color: rgba(0, 255, 255, 0.4);
+  text-shadow: 0 0 5px #00ffff;
+}
+
+.player-page--neon .progress-current {
+  color: #00ffff;
+  text-shadow: 0 0 15px #00ffff;
+}
+
+.player-page--neon .timeline-slider :deep(.el-slider__bar) {
+  background: linear-gradient(90deg, #00ffff, #ff00ff) !important;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+}
+
+.player-page--neon .timeline-slider :deep(.el-slider__button) {
+  background: radial-gradient(circle at 30% 30%, #fff, #00ffff);
+  border: 2px solid #00ffff;
+  box-shadow: 0 0 20px #00ffff;
+}
+
+.player-page--neon .play-button {
+  background: linear-gradient(135deg, #00ffff 0%, #0088ff 50%, #ff00ff 100%) !important;
+  border: none !important;
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.5), 0 0 60px rgba(255, 0, 255, 0.3) !important;
+}
+
+.player-page--neon .play-button:hover {
+  box-shadow: 0 0 40px rgba(0, 255, 255, 0.7), 0 0 80px rgba(255, 0, 255, 0.5) !important;
+}
+
+.player-page--neon .player-controls :deep(.el-button) {
+  background: rgba(10, 10, 25, 0.9) !important;
+  border: 1px solid rgba(0, 255, 255, 0.2) !important;
+  color: #00ffff !important;
+}
+
+.player-page--neon .player-controls :deep(.el-button:hover:not(:disabled)) {
+  background: rgba(0, 255, 255, 0.1) !important;
+  border-color: #00ffff !important;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+}
+
+.player-page--neon kbd {
+  background: rgba(10, 10, 25, 0.9);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  color: #00ffff;
+  text-shadow: 0 0 5px #00ffff;
+}
+
+.player-page--neon .streaming-cursor {
+  color: #ff00ff;
+  text-shadow: 0 0 10px #ff00ff;
+}
+
+/* =====================================================
+   GLASSMORPHISM STYLE - 玻璃拟态风格
+   Frosted glass effect with soft gradients
+   ===================================================== */
+
+.player-page--glassmorphism {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%);
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.player-page--glassmorphism::before {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(100px);
+}
+
+.player-page--glassmorphism .player-header {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+.player-page--glassmorphism .player-header::before,
+.player-page--glassmorphism .player-header::after {
+  display: none;
+}
+
+.player-page--glassmorphism .file-info {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+}
+
+.player-page--glassmorphism .file-icon {
+  color: #fff;
+}
+
+.player-page--glassmorphism .file-path {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.player-page--glassmorphism .commit-order {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.player-page--glassmorphism .commit-hash {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.player-page--glassmorphism .commit-panel {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(15px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.player-page--glassmorphism .commit-panel::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2));
+}
+
+.player-page--glassmorphism .commit-message {
+  color: #fff;
+  font-family: inherit;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.player-page--glassmorphism .commit-meta {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.player-page--glassmorphism .additions {
+  color: #a8ff78 !important;
+}
+
+.player-page--glassmorphism .deletions {
+  color: #ff6b6b !important;
+}
+
+.player-page--glassmorphism .code-viewers {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.player-page--glassmorphism .code-viewers::after {
+  display: none;
+}
+
+.player-page--glassmorphism .code-viewer {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.player-page--glassmorphism .code-viewer-label {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.player-page--glassmorphism .code-viewer--previous .code-viewer-label {
+  color: #ff6b6b;
+}
+
+.player-page--glassmorphism .code-viewer--current .code-viewer-label {
+  color: #a8ff78;
+}
+
+.player-page--glassmorphism .code-line:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.player-page--glassmorphism .code-line--added {
+  background: rgba(168, 255, 120, 0.15);
+  border-left: 3px solid #a8ff78;
+}
+
+.player-page--glassmorphism .code-line--added .line-number {
+  color: #a8ff78;
+}
+
+.player-page--glassmorphism .code-line--deleted {
+  background: rgba(255, 107, 107, 0.15);
+  border-left: 3px solid #ff6b6b;
+}
+
+.player-page--glassmorphism .code-line--deleted .line-number {
+  color: #ff6b6b;
+}
+
+.player-page--glassmorphism .line-number {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.player-page--glassmorphism .code-content {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Glassmorphism Chat Section */
+.player-page--glassmorphism .chat-section {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: -5px 0 30px rgba(0, 0, 0, 0.1);
+}
+
+.player-page--glassmorphism .chat-section::before {
+  display: none;
+}
+
+.player-page--glassmorphism .chat-header {
+  background: rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.player-page--glassmorphism .chat-header h3 {
+  color: #fff;
+  font-family: inherit;
+  text-transform: none;
+}
+
+.player-page--glassmorphism .chat-message--user .message-avatar {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+.player-page--glassmorphism .chat-message--assistant .message-avatar {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  color: #fff;
+}
+
+.player-page--glassmorphism .chat-message--user .message-content {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.8), rgba(118, 75, 162, 0.8));
+  color: #fff;
+}
+
+.player-page--glassmorphism .chat-message--assistant .message-content {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.player-page--glassmorphism .chat-message--assistant .message-content :deep(code) {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.player-page--glassmorphism .chat-input {
+  background: rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Glassmorphism Footer */
+.player-page--glassmorphism .player-footer {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.player-page--glassmorphism .timeline-slider {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.player-page--glassmorphism .timeline-slider::before,
+.player-page--glassmorphism .timeline-slider::after {
+  display: none;
+}
+
+.player-page--glassmorphism .progress-current {
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.player-page--glassmorphism .progress-total,
+.player-page--glassmorphism .progress-separator {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.player-page--glassmorphism .timeline-slider :deep(.el-slider__runway) {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.player-page--glassmorphism .timeline-slider :deep(.el-slider__bar) {
+  background: linear-gradient(90deg, #667eea, #764ba2) !important;
+}
+
+.player-page--glassmorphism .timeline-slider :deep(.el-slider__button) {
+  background: #fff;
+  border: 2px solid rgba(102, 126, 234, 0.8);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.player-page--glassmorphism .play-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+}
+
+.player-page--glassmorphism .play-button:hover {
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6) !important;
+}
+
+.player-page--glassmorphism .player-controls :deep(.el-button) {
+  background: rgba(255, 255, 255, 0.15) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.player-page--glassmorphism .player-controls :deep(.el-button:hover:not(:disabled)) {
+  background: rgba(255, 255, 255, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.player-page--glassmorphism kbd {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.player-page--glassmorphism .shortcuts-hint {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.player-page--glassmorphism .streaming-cursor {
+  color: #667eea;
+}
+
+/* Glassmorphism: Header buttons */
+.player-page--glassmorphism .player-header :deep(.el-button) {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+}
+
+.player-page--glassmorphism .player-header :deep(.el-button:hover) {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+.player-page--glassmorphism .style-selector :deep(.el-input__wrapper) {
+  background: rgba(255, 255, 255, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+}
+
+.player-page--glassmorphism .style-selector :deep(.el-input__inner) {
+  color: #fff !important;
+}
 </style>
+
 
 
