@@ -136,11 +136,8 @@ async function fetchOrTriggerAnalysis(commitId: number) {
       expandedAnalysis.value.add(commitId)
       expandedAnalysis.value = new Set(expandedAnalysis.value)
       return
-    } catch (e: any) {
-      // 404 表示没有分析，需要触发
-      if (e?.response?.status !== 404 && !e?.message?.includes('404')) {
-        console.log('No existing analysis, triggering new one...')
-      }
+    } catch {
+      // 404 表示没有分析，需要触发新分析
     }
 
     // 触发新分析

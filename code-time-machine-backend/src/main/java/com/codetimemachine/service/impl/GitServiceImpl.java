@@ -39,23 +39,15 @@ import java.time.ZoneId;
 import java.util.*;
 import java.util.function.Consumer;
 
-/**
- * Git服务实现 - 使用JGit
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class GitServiceImpl implements GitService {
 
-    /**
-     * 文件内容缓存 - 使用 Caffeine 高性能缓存
-     * 由 CacheConfig 注入
-     */
     private final Cache<String, String> fileContentCache;
 
     @Override
     public boolean cloneRepository(String url, String localPath) {
-        // 使用默认配置
         return cloneRepository(url, localPath, AnalyzeOptionsDTO.recommended());
     }
 
@@ -84,12 +76,8 @@ public class GitServiceImpl implements GitService {
         return cloneWithJGit(url, localPath, options);
     }
 
-    /**
-     * 使用原生Git命令克隆（支持partial clone，大幅提升速度）
-     */
     private boolean cloneWithNativeGit(String url, String localPath, AnalyzeOptionsDTO options) {
         try {
-            // 检查git是否可用（Windows需要特殊处理）
             boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
             log.info("操作系统: {}, isWindows: {}", System.getProperty("os.name"), isWindows);
 
@@ -106,16 +94,12 @@ public class GitServiceImpl implements GitService {
             ProcessBuilder checkGit = new ProcessBuilder(checkCmd);
             checkGit.redirectErrorStream(true);
             Process checkProcess = checkGit.start();
-
-            // 设置超时，防止阻塞
             boolean finished = checkProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
             if (!finished) {
                 log.warn("Git版本检查超时");
                 checkProcess.destroyForcibly();
                 return false;
             }
-
-            // 读取输出
             java.io.BufferedReader reader = new java.io.BufferedReader(
                     new java.io.InputStreamReader(checkProcess.getInputStream()));
             String line;
@@ -131,8 +115,6 @@ public class GitServiceImpl implements GitService {
                 return false;
             }
             log.info("检测到Git: {}", output.toString().trim());
-
-            // 构建克隆命令
             List<String> cmd = new ArrayList<>();
             if (isWindows) {
                 cmd.add("cmd.exe");
@@ -198,9 +180,6 @@ public class GitServiceImpl implements GitService {
         }
     }
 
-    /**
-     * 使用JGit克隆（备用方案）
-     */
     private boolean cloneWithJGit(String url, String localPath, AnalyzeOptionsDTO options) {
         File localDir = new File(localPath);
         String[] candidates = url.endsWith(".git") ? new String[] { url } : new String[] { url, url + ".git" };
@@ -540,7 +519,7 @@ public class GitServiceImpl implements GitService {
             process.waitFor();
 
             if (matchedCount == 0 && !changes.isEmpty()) {
-                log.debug("未能匹配到文件统计，commit: {}", commitHash);
+                // 未能匹配到文件统计
             }
 
             // 对于没有获取到统计的文件，设置默认值
@@ -573,7 +552,6 @@ public class GitServiceImpl implements GitService {
         // 检查缓存
         String cached = fileContentCache.getIfPresent(cacheKey);
         if (cached != null) {
-            log.debug("从缓存获取文件内容: {}", filePath);
             return cached;
         }
 
@@ -599,7 +577,6 @@ public class GitServiceImpl implements GitService {
             }
         } catch (org.eclipse.jgit.errors.MissingObjectException e) {
             // Partial clone 缺少 blob，使用原生 git 获取
-            log.debug("Blob缺失，使用原生git获取: {}", filePath);
             String content = getFileContentWithNativeGit(localPath, commitHash, filePath);
             if (content != null) {
                 putToCache(cacheKey, content);
@@ -608,7 +585,6 @@ public class GitServiceImpl implements GitService {
         } catch (Exception e) {
             // 其他错误也尝试原生 git
             if (e.getMessage() != null && e.getMessage().contains("Missing")) {
-                log.debug("Blob缺失，使用原生git获取: {}", filePath);
                 String content = getFileContentWithNativeGit(localPath, commitHash, filePath);
                 if (content != null) {
                     putToCache(cacheKey, content);
@@ -669,7 +645,6 @@ public class GitServiceImpl implements GitService {
             }
 
             if (!fileExistsInCommit(localPath, commitHash, filePath)) {
-                log.debug("文件在该提交中不存在: {} @ {}", filePath, commitHash);
                 return null;
             }
 
@@ -728,7 +703,6 @@ public class GitServiceImpl implements GitService {
             }
             return false;
         } catch (Exception e) {
-            log.debug("检查文件是否存在于提交失败: {}", e.getMessage());
             return false;
         }
     }
@@ -779,8 +753,6 @@ public class GitServiceImpl implements GitService {
             log.info("已删除本地仓库: {}", localPath);
         }
     }
-
-    // ============ 私有辅助方法 ============
 
     private CommitRecord convertToCommitRecord(Git git, RevCommit revCommit, int order) {
         CommitRecord record = new CommitRecord();
@@ -928,7 +900,6 @@ public class GitServiceImpl implements GitService {
 
     @Override
     public CommitStatsDTO calculateCommitStats(String localPath, String commitHash) {
-        log.debug("计算提交统计: {}", commitHash);
 
         // 先尝试 JGit
         try (Git git = Git.open(new File(localPath))) {
@@ -949,11 +920,9 @@ public class GitServiceImpl implements GitService {
             }
         } catch (org.eclipse.jgit.errors.MissingObjectException e) {
             // Blob 缺失（partial clone），使用原生 git
-            log.debug("Blob 缺失，使用原生 git 计算统计: {}", commitHash);
             return calculateCommitStatsWithNativeGit(localPath, commitHash);
         } catch (Exception e) {
             if (e.getMessage() != null && e.getMessage().contains("Missing")) {
-                log.debug("Blob 缺失，使用原生 git 计算统计: {}", commitHash);
                 return calculateCommitStatsWithNativeGit(localPath, commitHash);
             }
             log.error("计算提交统计失败: {}", e.getMessage());

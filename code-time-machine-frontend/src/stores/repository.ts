@@ -1,14 +1,9 @@
-// =====================================================
-// AI代码时光机 - 仓库状态管理
-// =====================================================
-
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Repository, CommitRecord, FileChange, AiAnalysis, ContributorStats } from '@/types'
 import { repositoryApi, commitApi } from '@/api'
 
 export const useRepositoryStore = defineStore('repository', () => {
-  // 状态
   const repositories = ref<Repository[]>([])
   const currentRepo = ref<Repository | null>(null)
   const commits = ref<CommitRecord[]>([])
@@ -22,13 +17,9 @@ export const useRepositoryStore = defineStore('repository', () => {
   const analyzeProgress = ref(0)
   const error = ref<string | null>(null)
   const pollIntervalMs = 2000
-
-  // 分页状态
   const commitsTotal = ref(0)
   const commitsPage = ref(1)
   const commitsPageSize = 100
-
-  // 计算属性
   const hasRepo = computed(() => currentRepo.value !== null)
   const isAnalyzing = computed(() => currentRepo.value?.status === 1)
   const isAnalyzed = computed(() => currentRepo.value?.status === 2)
@@ -40,9 +31,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     return [...commits.value].sort((a, b) => a.commitOrder - b.commitOrder)
   })
 
-  // Actions
-
-  // 获取仓库列表
   async function fetchRepositories() {
     loading.value = true
     error.value = null
@@ -56,7 +44,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 分析新仓库（支持高级选项）
   async function analyzeRepository(url: string, options?: {
     depth?: number
     since?: string
@@ -94,7 +81,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 增量获取更多历史
   async function fetchMoreHistory(repoId: number, depth: number = 500) {
     loading.value = true
     error.value = null
@@ -118,7 +104,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 轮询分析进度
   async function pollAnalyzeProgress(repoId: number) {
     while (true) {
       try {
@@ -151,7 +136,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 获取仓库详情
   async function fetchRepoDetail(id: number) {
     loading.value = true
     error.value = null
@@ -180,7 +164,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 获取提交列表（首次加载）
   async function fetchCommits(repoId: number, page = 1, pageSize = 100) {
     try {
       const result = await commitApi.getList(repoId, page, pageSize)
@@ -194,7 +177,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 加载更多提交
   async function loadMoreCommits(repoId: number) {
     try {
       const nextPage = commitsPage.value + 1
@@ -208,12 +190,10 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 是否还有更多提交
   const hasMoreCommits = computed(() => {
     return commits.value.length < commitsTotal.value
   })
 
-  // 选择提交
   async function selectCommit(commit: CommitRecord) {
     currentCommit.value = commit
 
@@ -234,7 +214,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 触发AI分析
   async function triggerAnalysis(commitId: number) {
     try {
       const analysis = await commitApi.triggerAnalysis(commitId)
@@ -246,7 +225,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     }
   }
 
-  // 清理状态
   function clearCurrentRepo() {
     currentRepo.value = null
     commits.value = []
@@ -257,7 +235,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     analyzeProgress.value = 0
   }
 
-  // 删除仓库
   async function deleteRepository(id: number) {
     try {
       await repositoryApi.delete(id)
@@ -273,7 +250,6 @@ export const useRepositoryStore = defineStore('repository', () => {
   }
 
   return {
-    // 状态
     repositories,
     currentRepo,
     commits,
@@ -285,8 +261,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     analyzing,
     analyzeProgress,
     error,
-
-    // 计算属性
     hasRepo,
     isAnalyzing,
     isAnalyzed,
@@ -295,8 +269,6 @@ export const useRepositoryStore = defineStore('repository', () => {
     commitsByOrder,
     commitsTotal,
     hasMoreCommits,
-
-    // Actions
     fetchRepositories,
     analyzeRepository,
     fetchRepoDetail,

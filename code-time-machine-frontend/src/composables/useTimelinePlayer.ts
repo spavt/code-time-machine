@@ -1,7 +1,3 @@
-// =====================================================
-// AI代码时光机 - 播放器逻辑 Composable
-// =====================================================
-
 import { ref, computed, watch, onUnmounted } from 'vue'
 import type { TimelineCommit, DiffLine } from '@/types'
 import { diffArrays } from 'diff'
@@ -19,17 +15,15 @@ export function useTimelinePlayer(
 ) {
   const { autoPlay = false, defaultSpeed = 1000, loop = false, beforeAdvance } = options
 
-  // 播放状态
   const isPlaying = ref(false)
   const currentIndex = ref(0)
-  const speed = ref(defaultSpeed) // 毫秒
+  const speed = ref(defaultSpeed)
   const playDirection = ref<'forward' | 'backward'>('forward')
 
   let playTimer: ReturnType<typeof setInterval> | null = null
   let pendingAdvance = false
   let advanceToken = 0
 
-  // 计算属性
   const totalFrames = computed(() => commits().length)
   const hasNext = computed(() => currentIndex.value < totalFrames.value - 1)
   const hasPrev = computed(() => currentIndex.value > 0)
@@ -46,8 +40,6 @@ export function useTimelinePlayer(
     const list = commits()
     return currentIndex.value > 0 ? list[currentIndex.value - 1] : null
   })
-
-  // 播放控制
   function play() {
     if (isPlaying.value) return
     if (!hasNext.value && playDirection.value === 'forward') {
@@ -171,7 +163,6 @@ export function useTimelinePlayer(
     playDirection.value = playDirection.value === 'forward' ? 'backward' : 'forward'
   }
 
-  // 键盘快捷键
   function handleKeydown(e: KeyboardEvent) {
     switch (e.key) {
       case ' ':
@@ -197,7 +188,6 @@ export function useTimelinePlayer(
     }
   }
 
-  // 速度变化时重启播放
   watch(speed, () => {
     if (isPlaying.value) {
       pause()
@@ -205,18 +195,15 @@ export function useTimelinePlayer(
     }
   })
 
-  // 清理
   onUnmounted(() => {
     pause()
   })
 
-  // 自动播放
   if (autoPlay && totalFrames.value > 0) {
     play()
   }
 
   return {
-    // 状态
     isPlaying,
     currentIndex,
     speed,
@@ -227,8 +214,6 @@ export function useTimelinePlayer(
     hasPrev,
     currentCommit,
     previousCommit,
-
-    // 方法
     play,
     pause,
     togglePlay,
@@ -243,7 +228,6 @@ export function useTimelinePlayer(
   }
 }
 
-// Diff解析工具
 export function parseDiff(diffText: string): DiffLine[] {
   if (!diffText) return []
 
@@ -253,17 +237,15 @@ export function parseDiff(diffText: string): DiffLine[] {
   let newLine = 0
 
   for (const line of lines) {
-    // 跳过diff头信息
     if (line.startsWith('diff ') || line.startsWith('index ') ||
       line.startsWith('---') || line.startsWith('+++')) {
       continue
     }
 
-    // 解析hunk头
     const hunkMatch = line.match(/^@@ -(\d+),?\d* \+(\d+),?\d* @@/)
     if (hunkMatch) {
-      oldLine = parseInt(hunkMatch[1]) - 1
-      newLine = parseInt(hunkMatch[2]) - 1
+      oldLine = parseInt(hunkMatch[1] ?? '0') - 1
+      newLine = parseInt(hunkMatch[2] ?? '0') - 1
       result.push({
         lineNumber: result.length,
         type: 'context',
@@ -304,7 +286,6 @@ export function parseDiff(diffText: string): DiffLine[] {
   return result
 }
 
-// 代码语言检测
 export function detectLanguage(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() || ''
 
@@ -348,15 +329,11 @@ export function detectLanguage(filePath: string): string {
   return langMap[ext] || 'plaintext'
 }
 
-// 计算变更行 - 使用 diff 库的 Myers 算法，时间复杂度 O(n*d)
 export interface LineChange {
   lineNumber: number
   type: 'added' | 'deleted' | 'modified'
 }
 
-/**
- * 使用 Myers diff 算法计算变更行
- */
 export function computeChangedLines(
   oldContent: string,
   newContent: string
@@ -365,7 +342,6 @@ export function computeChangedLines(
   const deleted: number[] = []
   let firstChangedLine: number | null = null
 
-  // 快速路径：完全相同
   if (oldContent === newContent) {
     return { added, deleted, firstChangedLine }
   }
@@ -373,7 +349,6 @@ export function computeChangedLines(
   const oldLines = oldContent.split('\n')
   const newLines = newContent.split('\n')
 
-  // 使用 diff 库的 diffArrays（基于 Myers 算法）
   const changes = diffArrays(oldLines, newLines)
 
   let oldLineNum = 1

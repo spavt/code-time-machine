@@ -121,7 +121,6 @@ public class CommitServiceImpl implements CommitService {
 
     @Override
     public CommitStatsDTO getStats(Long commitId) {
-        log.debug("获取提交统计: {}", commitId);
 
         // 先检查数据库中是否已有统计
         CommitRecord commit = getById(commitId);
@@ -150,7 +149,6 @@ public class CommitServiceImpl implements CommitService {
             commit.setDeletions(stats.getDeletions());
             commit.setFilesChanged(stats.getFilesChanged());
             commitRecordMapper.updateById(commit);
-            log.debug("已缓存提交统计: {} -> +{} -{}", commitId, stats.getAdditions(), stats.getDeletions());
         }
 
         return stats;

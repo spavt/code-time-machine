@@ -37,7 +37,7 @@ const isValidUrl = computed(() => {
 // 获取当前选中的深度预设信息
 const selectedDepthPreset = computed(() => {
   const found = DepthPresets.find(p => p.value === analyzeDepth.value)
-  return found ?? DepthPresets[1] // 默认返回推荐选项
+  return found ?? DepthPresets[1]! // 默认返回推荐选项（使用非空断言，因为 DepthPresets 是静态数组）
 })
 
 // 构建分析选项
