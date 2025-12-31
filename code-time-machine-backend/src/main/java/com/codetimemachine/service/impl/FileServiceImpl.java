@@ -14,14 +14,16 @@ import com.codetimemachine.service.FileService;
 import com.codetimemachine.service.GitService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class FileServiceImpl implements FileService {
 
     private final RepositoryMapper repositoryMapper;
@@ -29,6 +31,22 @@ public class FileServiceImpl implements FileService {
     private final FileChangeMapper fileChangeMapper;
     private final AiAnalysisMapper aiAnalysisMapper;
     private final GitService gitService;
+    private final Executor taskExecutor;
+
+    public FileServiceImpl(
+            RepositoryMapper repositoryMapper,
+            CommitRecordMapper commitRecordMapper,
+            FileChangeMapper fileChangeMapper,
+            AiAnalysisMapper aiAnalysisMapper,
+            GitService gitService,
+            @Qualifier("taskExecutor") Executor taskExecutor) {
+        this.repositoryMapper = repositoryMapper;
+        this.commitRecordMapper = commitRecordMapper;
+        this.fileChangeMapper = fileChangeMapper;
+        this.aiAnalysisMapper = aiAnalysisMapper;
+        this.gitService = gitService;
+        this.taskExecutor = taskExecutor;
+    }
 
     @Override
     public List<Map<String, Object>> getFileTree(Long repoId) {
@@ -401,5 +419,83 @@ public class FileServiceImpl implements FileService {
         }
 
         return timeline;
+    }
+
+    @Override
+    public Map<Long, Map<String, Object>> getBatchFileContent(Long repoId, List<Long> commitIds, String filePath) {
+        if (commitIds == null || commitIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Repository repo = repositoryMapper.selectById(repoId);
+        if (repo == null || repo.getLocalPath() == null) {
+            return Collections.emptyMap();
+        }
+
+        // 批量查询 commit 信息
+        LambdaQueryWrapper<CommitRecord> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(CommitRecord::getId, commitIds);
+        List<CommitRecord> commits = commitRecordMapper.selectList(wrapper);
+
+        Map<Long, CommitRecord> commitMap = commits.stream()
+                .collect(Collectors.toMap(CommitRecord::getId, c -> c));
+
+        String localPath = repo.getLocalPath();
+        String language = detectLanguage(filePath);
+
+        // 使用 CompletableFuture 并行处理
+        List<CompletableFuture<Map.Entry<Long, Map<String, Object>>>> futures = commitIds.stream()
+                .filter(commitMap::containsKey)
+                .map(commitId -> CompletableFuture.supplyAsync(() -> {
+                    CommitRecord commit = commitMap.get(commitId);
+                    String content = gitService.getFileContent(localPath, commit.getCommitHash(), filePath);
+
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("content", content != null ? content : "");
+                    result.put("language", language);
+                    result.put("lineCount", content != null ? content.split("\n").length : 0);
+
+                    return Map.entry(commitId, result);
+                }, taskExecutor))
+                .collect(Collectors.toList());
+
+        // 等待所有任务完成并收集结果
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    private String detectLanguage(String filePath) {
+        if (filePath == null)
+            return "plaintext";
+        String ext = filePath.contains(".")
+                ? filePath.substring(filePath.lastIndexOf(".") + 1).toLowerCase()
+                : "";
+
+        return switch (ext) {
+            case "js" -> "javascript";
+            case "ts" -> "typescript";
+            case "jsx", "tsx" -> "jsx";
+            case "vue" -> "vue";
+            case "py" -> "python";
+            case "java" -> "java";
+            case "go" -> "go";
+            case "rs" -> "rust";
+            case "c", "h" -> "c";
+            case "cpp", "cc", "hpp" -> "cpp";
+            case "cs" -> "csharp";
+            case "rb" -> "ruby";
+            case "php" -> "php";
+            case "sql" -> "sql";
+            case "sh", "bash" -> "bash";
+            case "yaml", "yml" -> "yaml";
+            case "json" -> "json";
+            case "xml" -> "xml";
+            case "html" -> "html";
+            case "css" -> "css";
+            case "scss", "less" -> "scss";
+            case "md" -> "markdown";
+            default -> "plaintext";
+        };
     }
 }

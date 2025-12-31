@@ -1,6 +1,7 @@
 package com.codetimemachine.controller;
 
 import com.codetimemachine.common.Result;
+import com.codetimemachine.dto.BatchContentRequest;
 import com.codetimemachine.dto.FileTimelineDTO;
 import com.codetimemachine.dto.MethodInfo;
 import com.codetimemachine.service.FileService;
@@ -62,6 +63,20 @@ public class FileController {
     }
 
     /**
+     * 批量获取文件内容（用于预加载优化）
+     * 使用并行处理，一次请求获取多个 commit 的文件内容
+     */
+    @PostMapping("/content/batch")
+    public Result<Map<Long, Map<String, Object>>> getBatchContent(
+            @RequestBody BatchContentRequest request) {
+        return Result.success(fileService.getBatchFileContent(
+                request.getRepoId(),
+                request.getCommitIds(),
+                request.getFilePath()));
+    }
+
+    /**
+     * 
      * 搜索文件
      */
     @GetMapping("/search/{repoId}")

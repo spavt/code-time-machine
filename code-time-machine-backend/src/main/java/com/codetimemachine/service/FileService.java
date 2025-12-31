@@ -44,4 +44,10 @@ public interface FileService {
      * 获取方法演化时间线
      */
     List<Map<String, Object>> getMethodTimeline(Long repoId, String filePath, String methodName);
+
+    /**
+     * 批量获取文件内容（用于预加载优化）
+     * 使用并行处理提高效率
+     */
+    Map<Long, Map<String, Object>> getBatchFileContent(Long repoId, List<Long> commitIds, String filePath);
 }
