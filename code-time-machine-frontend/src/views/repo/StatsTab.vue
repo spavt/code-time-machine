@@ -165,10 +165,6 @@ const activityHeatmapOption = computed(() => {
   <div class="stats-tab" v-loading="loading">
     <div class="stats-grid">
       <div class="chart-card">
-        <v-chart :option="linesTrendOption" class="chart" autoresize />
-      </div>
-
-      <div class="chart-card">
         <v-chart :option="commitFrequencyOption" class="chart" autoresize />
       </div>
 
@@ -214,8 +210,6 @@ const activityHeatmapOption = computed(() => {
             <span class="col-rank">#</span>
             <span class="col-author">贡献者</span>
             <span class="col-commits">提交数</span>
-            <span class="col-additions">新增</span>
-            <span class="col-deletions">删除</span>
           </div>
           <div
             v-for="(contributor, index) in repoStore.contributors"
@@ -228,8 +222,6 @@ const activityHeatmapOption = computed(() => {
               {{ contributor.authorName }}
             </span>
             <span class="col-commits">{{ contributor.commitCount }}</span>
-            <span class="col-additions">+{{ contributor.additions }}</span>
-            <span class="col-deletions">-{{ contributor.deletions }}</span>
           </div>
         </div>
       </div>
@@ -275,6 +267,7 @@ const activityHeatmapOption = computed(() => {
   height: 300px;
 }
 
+
 .contributors-table {
   width: 100%;
 }
@@ -282,7 +275,7 @@ const activityHeatmapOption = computed(() => {
 .table-header,
 .table-row {
   display: grid;
-  grid-template-columns: 40px 1fr 100px 100px 100px;
+  grid-template-columns: 40px 1fr 100px;
   gap: var(--spacing-md);
   padding: var(--spacing-sm) var(--spacing-md);
   align-items: center;
@@ -327,18 +320,6 @@ const activityHeatmapOption = computed(() => {
   font-family: var(--font-mono);
 }
 
-.col-additions {
-  text-align: center;
-  color: var(--color-success);
-  font-family: var(--font-mono);
-}
-
-.col-deletions {
-  text-align: center;
-  color: var(--color-danger);
-  font-family: var(--font-mono);
-}
-
 @media (max-width: 1024px) {
   .stats-grid {
     grid-template-columns: 1fr;
@@ -352,7 +333,7 @@ const activityHeatmapOption = computed(() => {
 @media (max-width: 768px) {
   .table-header,
   .table-row {
-    grid-template-columns: 30px 1fr 60px 60px 60px;
+    grid-template-columns: 30px 1fr 60px;
     font-size: 0.8rem;
   }
 }

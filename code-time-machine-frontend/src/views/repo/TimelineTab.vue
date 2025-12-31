@@ -263,18 +263,10 @@ function renderStars(score: number | undefined, max: number = 10): string {
                   </div>
                   
                   <div class="commit-stats">
-                    <span class="files-changed" v-if="commit.filesChanged !== null">
+                    <span class="files-changed" v-if="commit.fileChanges && commit.fileChanges.length > 0">
                       <el-icon><Document /></el-icon>
-                      {{ commit.filesChanged }} 文件
+                      {{ commit.fileChanges.length }} 文件
                     </span>
-                    <span class="stats-loading" v-else>
-                      <el-icon class="is-loading"><Loading /></el-icon>
-                    </span>
-                    <template v-if="commit.additions !== null">
-                      <span class="additions">+{{ commit.additions }}</span>
-                      <span class="deletions">-{{ commit.deletions }}</span>
-                    </template>
-                    <span class="stats-loading-text" v-else>计算中...</span>
                   </div>
                 </div>
 
@@ -355,18 +347,10 @@ function renderStars(score: number | undefined, max: number = 10): string {
                 </div>
                 
                 <div class="commit-stats">
-                  <span class="files-changed" v-if="commit.filesChanged !== null">
+                  <span class="files-changed" v-if="commit.fileChanges && commit.fileChanges.length > 0">
                     <el-icon><Document /></el-icon>
-                    {{ commit.filesChanged }} 文件
+                    {{ commit.fileChanges.length }} 文件
                   </span>
-                  <span class="stats-loading" v-else>
-                    <el-icon class="is-loading"><Loading /></el-icon>
-                  </span>
-                  <template v-if="commit.additions !== null">
-                    <span class="additions">+{{ commit.additions }}</span>
-                    <span class="deletions">-{{ commit.deletions }}</span>
-                  </template>
-                  <span class="stats-loading-text" v-else>计算中...</span>
                 </div>
               </div>
 

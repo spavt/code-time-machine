@@ -182,10 +182,6 @@ function renderMarkdown(text: string) {
                 <span class="commit-time">{{ formatTime(commit.commitTime) }}</span>
               </div>
             </div>
-            <div class="commit-stats">
-              <span class="stat-add">+{{ commit.additions }}</span>
-              <span class="stat-del">-{{ commit.deletions }}</span>
-            </div>
           </div>
         </div>
       </div>
@@ -209,9 +205,7 @@ function renderMarkdown(text: string) {
           <div class="contributor-info">
             <span class="contributor-name">{{ contributor.authorName }}</span>
             <span class="contributor-stats">
-              {{ contributor.commitCount }} 次提交 |
-              <span class="text-success">+{{ contributor.additions }}</span>
-              <span class="text-danger">-{{ contributor.deletions }}</span>
+              {{ contributor.commitCount }} 次提交
             </span>
           </div>
         </div>

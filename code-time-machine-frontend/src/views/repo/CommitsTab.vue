@@ -139,23 +139,10 @@ function formatTime(dateStr: string) {
                 <el-icon><User /></el-icon>
                 {{ commit.authorName }}
               </span>
-              <span class="commit-files">
-                <el-icon><Document /></el-icon>
-                {{ commit.filesChanged }} 文件
-              </span>
             </div>
           </div>
 
           <div class="commit-stats">
-            <template v-if="commit.additions !== null">
-              <div class="stat">
-                <span class="stat-value additions">+{{ commit.additions }}</span>
-              </div>
-              <div class="stat">
-                <span class="stat-value deletions">-{{ commit.deletions }}</span>
-              </div>
-            </template>
-            <span class="stats-loading" v-else>计算中...</span>
             <el-icon class="expand-icon" :class="{ rotated: selectedCommit === commit.id }">
               <ArrowDown />
             </el-icon>
@@ -197,10 +184,6 @@ function formatTime(dateStr: string) {
                     {{ getChangeTypeInfo(file.changeType).label }}
                   </span>
                   <span class="file-path">{{ file.filePath }}</span>
-                  <span class="file-stats">
-                    <span class="additions">+{{ file.additions }}</span>
-                    <span class="deletions">-{{ file.deletions }}</span>
-                  </span>
                 </div>
               </div>
             </div>

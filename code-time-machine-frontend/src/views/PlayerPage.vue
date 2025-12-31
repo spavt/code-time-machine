@@ -292,6 +292,17 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
     }
     // 注：移除了 changeKey.value++ 以避免 DOM 重建导致滚动位置重置
     
+    // ========== 立即执行滚动（不等待 diff API） ==========
+    // 自动滚动到第一个变化行（等待 DOM 完全渲染）
+    await nextTick()
+    // 再等待一个微任务周期，确保 computed 属性都计算完成
+    await nextTick()
+    // 检查是否被取消（帧已切换）
+    if (requestId !== commitLoadToken) return
+    // 立即执行滚动，不再使用 setTimeout 延迟
+    scrollToFirstChange()
+    
+    // ========== 以下为后台任务，不阻塞滚动 ==========
     // 构建富上下文：元信息 + diff + 代码片段
     let contextParts: string[] = []
     
@@ -304,25 +315,24 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
       contextParts.push(`AI摘要: ${commit.aiSummary}`)
     }
     
-    // 2. 获取 diff（如果有上一个版本）
+    // 2. 获取 diff（如果有上一个版本）- 后台获取，不阻塞 UI
     if (oldCommit?.commitHash) {
-      try {
-        const diffResult = await fileApi.getDiff(
-          repoId.value, 
-          oldCommit.commitHash, 
-          commit.commitHash, 
-          filePath.value
-        )
+      fileApi.getDiff(
+        repoId.value, 
+        oldCommit.commitHash, 
+        commit.commitHash, 
+        filePath.value
+      ).then((diffResult) => {
+        if (requestId !== commitLoadToken) return // 帧已切换，忽略结果
         if (diffResult?.diff) {
           const { additions, deletions } = countDiffStats(diffResult.diff)
           commit.additions = additions
           commit.deletions = deletions
-          contextParts.push('\n=== Diff（变更内容）===')
-          contextParts.push(diffResult.diff.slice(0, 2000)) // 限制 diff 长度
+          // 更新上下文（可选，如果需要的话）
         }
-      } catch (e) {
+      }).catch((e) => {
         console.warn('获取diff失败:', e)
-      }
+      })
     }
     
     // 3. 当前代码片段（用剩余空间）
@@ -343,23 +353,15 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
       codeSnippet: contextParts.join('\n')
     })
     
-    // 自动滚动到第一个变化行（等待 DOM 完全渲染）
-    await nextTick()
-    // 再等待一个微任务周期，确保 computed 属性都计算完成
-    await nextTick()
-    // 添加小延迟确保浏览器完成渲染
-    setTimeout(() => {
-      scrollToFirstChange()
-    }, 50)
-    
-    // 加载智能推荐问题
+    // 加载智能推荐问题 - 后台获取，不阻塞 UI
     if (commit.id) {
-      try {
-        suggestions.value = await chat.getSuggestions(commit.id)
-      } catch (e) {
+      chat.getSuggestions(commit.id).then((result) => {
+        if (requestId !== commitLoadToken) return // 帧已切换，忽略结果
+        suggestions.value = result
+      }).catch((e) => {
         console.warn('获取推荐问题失败:', e)
         suggestions.value = []
-      }
+      })
     }
   }
 }, { immediate: true })
