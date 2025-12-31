@@ -13,7 +13,6 @@ const recentCommits = computed(() => repoStore.commits.slice(0, 10))
 const fileSuggestions = ref<string[]>([])
 const loadingFiles = ref(false)
 
-// 学习路径
 const showLearningPath = ref(false)
 const learningPathLoading = ref(false)
 const learningPath = ref('')
@@ -107,7 +106,6 @@ function renderMarkdown(text: string) {
 <template>
   <div class="overview-tab">
     <div class="overview-grid">
-      <!-- 左侧：快速开始 -->
       <div class="quick-start-section">
         <h3>
           <el-icon><VideoPlay /></el-icon>
@@ -137,7 +135,6 @@ function renderMarkdown(text: string) {
         
         <el-divider />
         
-        <!-- 学习路径 -->
         <h3 style="margin-top: var(--spacing-md);">
           <el-icon><Reading /></el-icon>
           AI 学习路径
@@ -149,7 +146,6 @@ function renderMarkdown(text: string) {
         </el-button>
       </div>
 
-      <!-- 右侧：最近提交 -->
       <div class="recent-commits-section">
         <h3>
           <el-icon><Clock /></el-icon>
@@ -187,7 +183,6 @@ function renderMarkdown(text: string) {
       </div>
     </div>
 
-    <!-- 主要贡献者 -->
     <div class="contributors-section" v-if="repoStore.contributors.length > 0">
       <h3>
         <el-icon><User /></el-icon>
@@ -212,7 +207,6 @@ function renderMarkdown(text: string) {
       </div>
     </div>
     
-    <!-- 学习路径对话框 -->
     <el-dialog 
       v-model="showLearningPath" 
       title="📚 AI 学习路径" 

@@ -12,14 +12,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
-/**
- * Stats API.
- *
- * TODO:
- * - cache stats results
- * - more dimensions
- * - heatmap data
- */
 @RestController
 @RequestMapping("/api/stats")
 @RequiredArgsConstructor
@@ -28,9 +20,6 @@ public class StatsController {
     private final CommitRecordMapper commitRecordMapper;
     private final FileChangeMapper fileChangeMapper;
 
-    /**
-     * Get lines trend.
-     */
     @GetMapping("/lines-trend/{repoId}")
     public Result<Map<String, Object>> getLinesTrend(@PathVariable Long repoId) {
         LambdaQueryWrapper<CommitRecord> wrapper = new LambdaQueryWrapper<>();
@@ -64,9 +53,6 @@ public class StatsController {
                 "total", total));
     }
 
-    /**
-     * Get commit frequency by day.
-     */
     @GetMapping("/commit-frequency/{repoId}")
     public Result<Map<String, Object>> getCommitFrequency(@PathVariable Long repoId) {
         List<Map<String, Object>> stats = commitRecordMapper.getCommitFrequency(repoId);
@@ -84,17 +70,11 @@ public class StatsController {
                 "counts", counts));
     }
 
-    /**
-     * Get contributor stats.
-     */
     @GetMapping("/contributors/{repoId}")
     public Result<List<Map<String, Object>>> getContributors(@PathVariable Long repoId) {
         return Result.success(commitRecordMapper.getContributorStats(repoId, 20));
     }
 
-    /**
-     * Get file type distribution.
-     */
     @GetMapping("/file-types/{repoId}")
     public Result<List<Map<String, Object>>> getFileTypes(@PathVariable Long repoId) {
         List<Map<String, Object>> stats = fileChangeMapper.getFileTypeStats(repoId);
@@ -116,9 +96,6 @@ public class StatsController {
                 .collect(Collectors.toList()));
     }
 
-    /**
-     * Get change type distribution.
-     */
     @GetMapping("/change-types/{repoId}")
     public Result<List<Map<String, Object>>> getChangeTypes(@PathVariable Long repoId) {
         List<Map<String, Object>> stats = fileChangeMapper.getChangeTypeStats(repoId);
@@ -139,9 +116,6 @@ public class StatsController {
                 .collect(Collectors.toList()));
     }
 
-    /**
-     * Get file heatmap data.
-     */
     @GetMapping("/file-heatmap/{repoId}")
     public Result<List<Map<String, Object>>> getFileHeatmap(@PathVariable Long repoId) {
         List<Map<String, Object>> heatmapData = fileChangeMapper.getFileModificationCounts(repoId);
@@ -160,9 +134,6 @@ public class StatsController {
         return Result.success(heatmapData);
     }
 
-    /**
-     * Get activity heatmap data.
-     */
     @GetMapping("/activity-heatmap/{repoId}")
     public Result<Map<String, Object>> getActivityHeatmap(@PathVariable Long repoId) {
         List<Map<String, Object>> stats = commitRecordMapper.getActivityHeatmap(repoId);

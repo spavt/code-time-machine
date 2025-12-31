@@ -66,12 +66,10 @@ public class GitServiceImpl implements GitService {
             deleteDirectory(localDir);
         }
 
-        // 优先尝试原生Git命令（支持 --filter=blob:none，速度快10-50倍）
         if (cloneWithNativeGit(url, localPath, options)) {
             return true;
         }
 
-        // 回退到JGit
         log.info("原生Git不可用，回退到JGit");
         return cloneWithJGit(url, localPath, options);
     }
@@ -121,28 +119,23 @@ public class GitServiceImpl implements GitService {
                 cmd.add("/c");
             }
             cmd.add("git");
-            // Windows 超长路径支持
             cmd.add("-c");
             cmd.add("core.longpaths=true");
             cmd.add("clone");
 
-            // 设置克隆深度
             int cloneDepth = options.getEffectiveCloneDepth();
             if (cloneDepth > 0 && options.getShallow()) {
                 cmd.add("--depth=" + cloneDepth);
-                // 关键优化：使用 blob filter，只下载需要的文件
                 cmd.add("--filter=blob:none");
                 log.info("使用原生Git浅克隆，深度: {}, 启用blob过滤", cloneDepth);
             }
 
-            // 单分支克隆
             if (options.getSingleBranch()) {
                 cmd.add("--single-branch");
             }
 
             cmd.add("--progress");
             cmd.add(url.endsWith(".git") ? url : url + ".git");
-            // 修复Windows路径分隔符问题
             cmd.add(localPath.replace("\\", "/"));
 
             log.info("执行克隆命令: {}", String.join(" ", cmd));
@@ -152,7 +145,6 @@ public class GitServiceImpl implements GitService {
 
             Process process = pb.start();
 
-            // 读取并记录输出（收集所有输出以便调试）
             java.io.BufferedReader cloneReader = new java.io.BufferedReader(
                     new java.io.InputStreamReader(process.getInputStream()));
             String cloneLine;
@@ -170,7 +162,6 @@ public class GitServiceImpl implements GitService {
                 return true;
             } else {
                 log.warn("原生Git克隆失败，退出码: {}, 输出:\n{}", exitCode, fullOutput);
-                // 清理失败的目录
                 deleteDirectory(new File(localPath));
                 return false;
             }
@@ -191,7 +182,6 @@ public class GitServiceImpl implements GitService {
                         .setDirectory(localDir)
                         .setCloneAllBranches(!options.getSingleBranch());
 
-                // 根据配置设置克隆深度
                 int cloneDepth = options.getEffectiveCloneDepth();
                 if (cloneDepth > 0 && options.getShallow()) {
                     cloneCmd.setDepth(cloneDepth);
@@ -217,7 +207,6 @@ public class GitServiceImpl implements GitService {
     public boolean fetchMoreHistory(String localPath, int additionalDepth) {
         log.info("增量获取历史: {}, 额外深度: {}", localPath, additionalDepth);
         try (Git git = Git.open(new File(localPath))) {
-            // 使用 git fetch --deepen 来获取更多历史
             git.fetch()
                     .setDepth(additionalDepth)
                     .call();
@@ -234,26 +223,22 @@ public class GitServiceImpl implements GitService {
         Repository repo = new Repository();
 
         try (Git git = Git.open(new File(localPath))) {
-            // 获取默认分支
             Ref head = git.getRepository().exactRef("HEAD");
             if (head != null && head.getTarget() != null) {
                 String branch = head.getTarget().getName();
                 repo.setDefaultBranch(branch.replace("refs/heads/", ""));
             }
 
-            // 统计提交数
             int commitCount = 0;
             for (RevCommit commit : git.log().call()) {
                 commitCount++;
             }
             repo.setTotalCommits(commitCount);
 
-            // 统计文件数
             RevCommit headCommit = git.log().setMaxCount(1).call().iterator().next();
             int fileCount = countFiles(git, headCommit);
             repo.setTotalFiles(fileCount);
 
-            // 计算仓库大小
             File repoDir = new File(localPath);
             repo.setRepoSize(calculateDirectorySize(repoDir));
 
@@ -271,13 +256,11 @@ public class GitServiceImpl implements GitService {
         try (Git git = Git.open(new File(localPath))) {
             Iterable<RevCommit> logs = git.log().setMaxCount(maxCommits).call();
 
-            // 先收集所有提交
             List<RevCommit> allCommits = new ArrayList<>();
             for (RevCommit commit : logs) {
                 allCommits.add(commit);
             }
 
-            // 反转顺序（从早到晚）
             Collections.reverse(allCommits);
 
             int total = allCommits.size();
@@ -310,13 +293,11 @@ public class GitServiceImpl implements GitService {
         try (Git git = Git.open(new File(localPath))) {
             LogCommand logCmd = git.log();
 
-            // 设置最大提交数
             int maxCommits = options.getEffectiveAnalyzeDepth();
             if (maxCommits < Integer.MAX_VALUE) {
                 logCmd.setMaxCount(maxCommits);
             }
 
-            // 时间范围过滤
             if (options.getSince() != null || options.getUntil() != null) {
                 Date since = options.getSince() != null
                         ? Date.from(options.getSince().atZone(ZoneId.systemDefault()).toInstant())
@@ -330,7 +311,6 @@ public class GitServiceImpl implements GitService {
                 log.info("应用时间过滤: {} 到 {}", since, until);
             }
 
-            // 路径过滤
             if (options.getPathFilters() != null && !options.getPathFilters().isEmpty()) {
                 for (String pathFilter : options.getPathFilters()) {
                     logCmd.addPath(pathFilter);
@@ -340,13 +320,11 @@ public class GitServiceImpl implements GitService {
 
             Iterable<RevCommit> logs = logCmd.call();
 
-            // 收集所有提交
             List<RevCommit> allCommits = new ArrayList<>();
             for (RevCommit commit : logs) {
                 allCommits.add(commit);
             }
 
-            // 反转顺序（从早到晚）
             Collections.reverse(allCommits);
 
             int total = allCommits.size();
@@ -382,7 +360,6 @@ public class GitServiceImpl implements GitService {
         List<FileChange> changes = new ArrayList<>();
 
         try {
-            // 使用原生 git 快速获取文件变更列表（不读取 blob）
             boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
 
             List<String> cmd = new ArrayList<>();
@@ -408,7 +385,6 @@ public class GitServiceImpl implements GitService {
             String line;
 
             while ((line = reader.readLine()) != null) {
-                // 格式: "M\tpath/to/file.java" 或 "R100\told\tnew"
                 String[] parts = line.split("\t");
                 if (parts.length >= 2) {
                     FileChange change = new FileChange();
@@ -416,7 +392,6 @@ public class GitServiceImpl implements GitService {
                     String filePath;
 
                     if (status.startsWith("R") || status.startsWith("C")) {
-                        // Rename 或 Copy: R100\told\tnew
                         change.setChangeType(status.startsWith("R") ? "RENAME" : "COPY");
                         change.setOldPath(parts[1]);
                         filePath = parts.length > 2 ? parts[2] : parts[1];
@@ -435,7 +410,6 @@ public class GitServiceImpl implements GitService {
                             ? filePath.substring(filePath.lastIndexOf("/") + 1)
                             : filePath);
 
-                    // 文件扩展名
                     if (filePath.contains(".")) {
                         String ext = filePath.substring(filePath.lastIndexOf(".") + 1);
                         if (ext.length() > 10)
@@ -443,7 +417,6 @@ public class GitServiceImpl implements GitService {
                         change.setFileExtension(ext);
                     }
 
-                    // 统计信息跳过，按需计算
                     change.setAdditions(null);
                     change.setDeletions(null);
 
@@ -460,9 +433,6 @@ public class GitServiceImpl implements GitService {
         return changes;
     }
 
-    /**
-     * 使用原生 git diff --numstat 填充每个文件的 additions/deletions
-     */
     private void fillFileStatsWithNativeGit(String localPath, String commitHash, List<FileChange> changes) {
         try {
             boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
@@ -475,7 +445,7 @@ public class GitServiceImpl implements GitService {
             cmd.add("git");
             cmd.add("show");
             cmd.add("--numstat");
-            cmd.add("--format="); // 不输出 commit 信息，只输出 numstat
+            cmd.add("--format=");
             cmd.add(commitHash);
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
@@ -488,7 +458,6 @@ public class GitServiceImpl implements GitService {
                     new java.io.InputStreamReader(process.getInputStream()));
             String line;
 
-            // 构建文件路径到 FileChange 的映射
             Map<String, FileChange> pathMap = new HashMap<>();
             for (FileChange change : changes) {
                 pathMap.put(change.getFilePath(), change);
@@ -496,7 +465,6 @@ public class GitServiceImpl implements GitService {
 
             int matchedCount = 0;
             while ((line = reader.readLine()) != null) {
-                // numstat 格式: "10\t5\tpath/to/file.java"
                 String[] parts = line.split("\t");
                 if (parts.length >= 3) {
                     try {
@@ -511,7 +479,6 @@ public class GitServiceImpl implements GitService {
                             matchedCount++;
                         }
                     } catch (NumberFormatException ignored) {
-                        // 二进制文件显示为 "-"
                     }
                 }
             }
@@ -519,10 +486,8 @@ public class GitServiceImpl implements GitService {
             process.waitFor();
 
             if (matchedCount == 0 && !changes.isEmpty()) {
-                // 未能匹配到文件统计
             }
 
-            // 对于没有获取到统计的文件，设置默认值
             for (FileChange change : changes) {
                 if (change.getAdditions() == null) {
                     change.setAdditions(0);
@@ -534,7 +499,6 @@ public class GitServiceImpl implements GitService {
 
         } catch (Exception e) {
             log.warn("原生 git 获取文件统计失败: {}", e.getMessage());
-            // 失败时设置默认值
             for (FileChange change : changes) {
                 if (change.getAdditions() == null)
                     change.setAdditions(0);
@@ -546,16 +510,13 @@ public class GitServiceImpl implements GitService {
 
     @Override
     public String getFileContent(String localPath, String commitHash, String filePath) {
-        // 生成缓存键
         String cacheKey = localPath + ":" + commitHash + ":" + filePath;
 
-        // 检查缓存
         String cached = fileContentCache.getIfPresent(cacheKey);
         if (cached != null) {
             return cached;
         }
 
-        // 先尝试 JGit
         try (Git git = Git.open(new File(localPath))) {
             org.eclipse.jgit.lib.Repository repository = git.getRepository();
 
@@ -569,21 +530,18 @@ public class GitServiceImpl implements GitService {
                         ObjectId blobId = treeWalk.getObjectId(0);
                         byte[] bytes = repository.open(blobId).getBytes();
                         String content = new String(bytes, StandardCharsets.UTF_8);
-                        // 保存到缓存
                         putToCache(cacheKey, content);
                         return content;
                     }
                 }
             }
         } catch (org.eclipse.jgit.errors.MissingObjectException e) {
-            // Partial clone 缺少 blob，使用原生 git 获取
             String content = getFileContentWithNativeGit(localPath, commitHash, filePath);
             if (content != null) {
                 putToCache(cacheKey, content);
             }
             return content;
         } catch (Exception e) {
-            // 其他错误也尝试原生 git
             if (e.getMessage() != null && e.getMessage().contains("Missing")) {
                 String content = getFileContentWithNativeGit(localPath, commitHash, filePath);
                 if (content != null) {
@@ -596,16 +554,10 @@ public class GitServiceImpl implements GitService {
         return null;
     }
 
-    /**
-     * 添加到缓存（Caffeine 自动处理大小限制和过期）
-     */
     private void putToCache(String key, String value) {
         fileContentCache.put(key, value);
     }
 
-    /**
-     * 使用原生 git show 命令获取文件内容（用于 partial clone）
-     */
     private String getFileContentWithNativeGit(String localPath, String commitHash, String filePath) {
         try {
             boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
@@ -629,7 +581,6 @@ public class GitServiceImpl implements GitService {
 
             Process process = pb.start();
 
-            // 读取输出
             java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
             byte[] buffer = new byte[8192];
             int len;
@@ -771,8 +722,6 @@ public class GitServiceImpl implements GitService {
             record.setParentHash(revCommit.getParent(0).getName());
         }
 
-        // 跳过 diff 计算以加速分析（使用 null 表示"尚未计算"）
-        // 统计信息将在用户查看时按需计算
         record.setAdditions(null);
         record.setDeletions(null);
         record.setFilesChanged(null);
@@ -818,7 +767,6 @@ public class GitServiceImpl implements GitService {
         change.setFilePath(path);
         change.setFileName(path.contains("/") ? path.substring(path.lastIndexOf("/") + 1) : path);
 
-        // 文件扩展名（限制长度，防止数据库溢出）
         if (path.contains(".")) {
             String ext = path.substring(path.lastIndexOf(".") + 1);
             if (ext.length() > 10) {
@@ -827,7 +775,6 @@ public class GitServiceImpl implements GitService {
             change.setFileExtension(ext);
         }
 
-        // 变更类型
         switch (diff.getChangeType()) {
             case ADD -> change.setChangeType("ADD");
             case MODIFY -> change.setChangeType("MODIFY");
@@ -839,8 +786,6 @@ public class GitServiceImpl implements GitService {
             case COPY -> change.setChangeType("COPY");
         }
 
-        // 跳过统计计算以加速分析
-        // 统计将在用户查看文件时按需计算
         change.setAdditions(null);
         change.setDeletions(null);
 
@@ -901,7 +846,6 @@ public class GitServiceImpl implements GitService {
     @Override
     public CommitStatsDTO calculateCommitStats(String localPath, String commitHash) {
 
-        // 先尝试 JGit
         try (Git git = Git.open(new File(localPath))) {
             org.eclipse.jgit.lib.Repository repository = git.getRepository();
             ObjectId commitId = repository.resolve(commitHash);
@@ -919,7 +863,6 @@ public class GitServiceImpl implements GitService {
                 return CommitStatsDTO.of(additions, deletions, changes.size());
             }
         } catch (org.eclipse.jgit.errors.MissingObjectException e) {
-            // Blob 缺失（partial clone），使用原生 git
             return calculateCommitStatsWithNativeGit(localPath, commitHash);
         } catch (Exception e) {
             if (e.getMessage() != null && e.getMessage().contains("Missing")) {
@@ -930,9 +873,6 @@ public class GitServiceImpl implements GitService {
         }
     }
 
-    /**
-     * 使用原生 git diff --stat 计算统计信息
-     */
     private CommitStatsDTO calculateCommitStatsWithNativeGit(String localPath, String commitHash) {
         try {
             boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
@@ -961,7 +901,6 @@ public class GitServiceImpl implements GitService {
             int additions = 0, deletions = 0, filesChanged = 0;
 
             while ((line = reader.readLine()) != null) {
-                // numstat 格式: "10\t5\tpath/to/file.java"
                 String[] parts = line.split("\t");
                 if (parts.length >= 3) {
                     try {
@@ -973,7 +912,6 @@ public class GitServiceImpl implements GitService {
                         }
                         filesChanged++;
                     } catch (NumberFormatException ignored) {
-                        // 二进制文件显示为 "-"
                     }
                 }
             }
@@ -1000,7 +938,6 @@ public class GitServiceImpl implements GitService {
 
         boolean isWindows = System.getProperty("os.name").toLowerCase().contains("win");
 
-        // 使用单个 git 进程批量获取
         try {
             for (PrefetchRequest req : requests) {
                 String key = req.getCommitHash() + ":" + req.getFilePath();
@@ -1054,12 +991,10 @@ public class GitServiceImpl implements GitService {
 
         int processed = 0;
         for (String hash : commitHashes) {
-            // 使用 parseFileChanges（内部用 git diff-tree）更可靠
             List<FileChange> changes = parseFileChanges(localPath, hash);
             results.put(hash, changes);
             processed++;
 
-            // 每处理 50 个输出一次进度
             if (processed % 50 == 0) {
                 log.info("文件变更解析进度: {}/{}", processed, commitHashes.size());
             }

@@ -12,9 +12,6 @@ import java.util.Map;
 @Mapper
 public interface CommitRecordMapper extends BaseMapper<CommitRecord> {
     
-    /**
-     * 获取贡献者统计
-     */
     @Select("""
         SELECT 
             author_name as authorName,

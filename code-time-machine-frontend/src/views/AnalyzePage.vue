@@ -15,14 +15,12 @@ const { analyzing, analyzeProgress } = storeToRefs(repoStore)
 
 const repoUrl = ref('')
 
-// 高级选项
 const showAdvancedOptions = ref(false)
-const analyzeDepth = ref(500) // 默认推荐深度
-const customDepth = ref(1000) // 自定义深度默认值
+const analyzeDepth = ref(500)
+const customDepth = ref(1000)
 const dateRange = ref<[Date, Date] | null>(null)
 const pathFilter = ref('')
 
-// 示例仓库
 const exampleRepos = [
   { name: 'Vue.js', url: 'https://github.com/vuejs/vue', icon: 'V', commits: '~3500' },
   { name: 'React', url: 'https://github.com/facebook/react', icon: 'R', commits: '~18000' },
@@ -34,13 +32,11 @@ const isValidUrl = computed(() => {
   return pattern.test(repoUrl.value)
 })
 
-// 获取当前选中的深度预设信息
 const selectedDepthPreset = computed(() => {
   const found = DepthPresets.find(p => p.value === analyzeDepth.value)
-  return found ?? DepthPresets[1]! // 默认返回推荐选项（使用非空断言，因为 DepthPresets 是静态数组）
+  return found ?? DepthPresets[1]!
 })
 
-// 构建分析选项
 function buildAnalyzeOptions() {
   const options: {
     depth?: number
@@ -49,18 +45,15 @@ function buildAnalyzeOptions() {
     pathFilters?: string[]
     shallow?: boolean
   } = {
-    // 如果选择自定义(0)，使用 customDepth 的值
     depth: analyzeDepth.value === 0 ? customDepth.value : analyzeDepth.value,
     shallow: true
   }
   
-  // 时间范围
   if (dateRange.value && dateRange.value[0] && dateRange.value[1]) {
     options.since = dateRange.value[0].toISOString().slice(0, 19)
     options.until = dateRange.value[1].toISOString().slice(0, 19)
   }
   
-  // 路径过滤
   if (pathFilter.value.trim()) {
     options.pathFilters = pathFilter.value.split(',').map(p => p.trim()).filter(p => p)
   }
@@ -95,7 +88,6 @@ async function startAnalyze() {
 
 function selectExample(url: string) {
   repoUrl.value = url
-  // 对于大型项目，自动打开高级选项提示
   const repo = exampleRepos.find(r => r.url === url)
   if (repo?.warning) {
     showAdvancedOptions.value = true
@@ -110,7 +102,6 @@ function goBack() {
 
 <template>
   <div class="analyze-page">
-    <!-- 导航栏 -->
     <header class="header">
       <div class="header-content">
         <div class="logo" @click="goBack" style="cursor: pointer;">
@@ -128,7 +119,6 @@ function goBack() {
 
     <main class="main-content">
       <div class="analyze-container">
-        <!-- 标题 -->
         <div class="page-header">
           <h1>
             <el-icon><Search /></el-icon>
@@ -137,7 +127,6 @@ function goBack() {
           <p>输入仓库地址，开启代码考古之旅</p>
         </div>
 
-        <!-- 输入区域 -->
         <div class="input-section">
           <div class="url-input-wrapper">
             <el-input
@@ -162,7 +151,6 @@ function goBack() {
             </el-button>
           </div>
           
-          <!-- 高级选项切换 -->
           <div class="advanced-toggle" @click="showAdvancedOptions = !showAdvancedOptions">
             <el-icon><Setting /></el-icon>
             <span>{{ showAdvancedOptions ? '隐藏高级选项' : '显示高级选项' }}</span>
@@ -171,10 +159,8 @@ function goBack() {
             </el-icon>
           </div>
           
-          <!-- 高级选项面板 -->
           <transition name="slide-down">
             <div v-show="showAdvancedOptions" class="advanced-options">
-              <!-- 分析深度 -->
               <div class="option-group">
                 <div class="option-label">
                   <span>分析深度</span>
@@ -196,7 +182,6 @@ function goBack() {
                   </div>
                 </div>
                 
-                <!-- 自定义次数输入框 -->
                 <div v-if="analyzeDepth === 0" class="custom-depth-input">
                   <el-input-number
                     v-model="customDepth"
@@ -210,7 +195,6 @@ function goBack() {
                 </div>
               </div>
               
-              <!-- 时间范围 -->
               <div class="option-group">
                 <div class="option-label">
                   <span>时间范围（可选）</span>
@@ -228,7 +212,6 @@ function goBack() {
                 />
               </div>
               
-              <!-- 路径过滤 -->
               <div class="option-group">
                 <div class="option-label">
                   <span>路径过滤（可选）</span>
@@ -242,7 +225,6 @@ function goBack() {
                 />
               </div>
               
-              <!-- 当前配置摘要 -->
               <div class="config-summary">
                 <el-icon><InfoFilled /></el-icon>
                 <span>
@@ -255,7 +237,6 @@ function goBack() {
             </div>
           </transition>
 
-          <!-- 进度条 -->
           <div v-if="analyzing" class="progress-section">
             <el-progress 
               :percentage="Math.max(0, Math.min(analyzeProgress, 100))" 
@@ -274,7 +255,6 @@ function goBack() {
           </div>
         </div>
 
-        <!-- 示例仓库 -->
         <div class="example-section">
           <h3>试试这些热门项目</h3>
           <div class="example-list">
@@ -291,7 +271,6 @@ function goBack() {
           </div>
         </div>
 
-        <!-- 已分析的仓库列表 -->
         <div class="history-section" v-if="repoStore.repositories.length > 0">
           <h3>
             <el-icon><Clock /></el-icon>
@@ -321,7 +300,6 @@ function goBack() {
           </div>
         </div>
 
-        <!-- 功能说明 -->
         <div class="features-section">
           <div class="feature-item">
             <el-icon><DocumentCopy /></el-icon>
@@ -645,7 +623,6 @@ function goBack() {
   }
 }
 
-/* 高级选项样式 */
 .advanced-toggle {
   display: flex;
   align-items: center;
@@ -778,7 +755,6 @@ function goBack() {
   color: var(--color-primary);
 }
 
-/* 动画 */
 .slide-down-enter-active,
 .slide-down-leave-active {
   transition: all 0.3s ease;

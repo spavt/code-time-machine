@@ -96,7 +96,6 @@ export function useTimelinePlayer(
           }
         })
         .catch(() => {
-          // ignore guard errors to avoid stopping playback
         })
         .finally(() => {
           pendingAdvance = false
@@ -358,7 +357,6 @@ export function computeChangedLines(
     const count = change.value.length
 
     if (change.removed) {
-      // 删除的行
       for (let i = 0; i < count; i++) {
         deleted.push(oldLineNum + i)
         if (firstChangedLine === null) {
@@ -367,7 +365,6 @@ export function computeChangedLines(
       }
       oldLineNum += count
     } else if (change.added) {
-      // 新增的行
       for (let i = 0; i < count; i++) {
         const lineNum = newLineNum + i
         added.add(lineNum)
@@ -377,7 +374,6 @@ export function computeChangedLines(
       }
       newLineNum += count
     } else {
-      // 未改变的行
       oldLineNum += count
       newLineNum += count
     }

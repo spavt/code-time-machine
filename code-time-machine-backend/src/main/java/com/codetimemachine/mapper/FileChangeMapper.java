@@ -12,9 +12,6 @@ import java.util.Map;
 @Mapper
 public interface FileChangeMapper extends BaseMapper<FileChange> {
 
-    /**
-     * 获取文件的所有变更历史
-     */
     @Select("""
                 SELECT fc.*, cr.commit_time, cr.commit_order, cr.author_name, cr.commit_message
                 FROM file_change fc
@@ -24,9 +21,6 @@ public interface FileChangeMapper extends BaseMapper<FileChange> {
             """)
     List<FileChange> getFileHistory(@Param("repoId") Long repoId, @Param("filePath") String filePath);
 
-    /**
-     * 获取仓库的所有文件路径
-     */
     @Select("""
                 SELECT DISTINCT file_path
                 FROM file_change
@@ -35,9 +29,6 @@ public interface FileChangeMapper extends BaseMapper<FileChange> {
             """)
     List<String> getDistinctFilePaths(@Param("repoId") Long repoId);
 
-    /**
-     * 获取仓库中每个文件的修改次数
-     */
     @Select("""
                 SELECT file_path as filePath, COUNT(*) as modifyCount
                 FROM file_change

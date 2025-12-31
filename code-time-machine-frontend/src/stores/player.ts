@@ -1,6 +1,3 @@
-// =====================================================
-// AI代码时光机 - 播放器状态管理
-// =====================================================
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
@@ -8,15 +5,13 @@ import type { FileTimeline, TimelineCommit } from '@/types'
 import { fileApi } from '@/api'
 
 export const usePlayerStore = defineStore('player', () => {
-  // 状态
   const timeline = ref<FileTimeline | null>(null)
   const currentIndex = ref(0)
   const isPlaying = ref(false)
-  const speed = ref(1500) // 毫秒
+  const speed = ref(1500)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  // 计算属性
   const commits = computed(() => timeline.value?.commits || [])
   const totalFrames = computed(() => commits.value.length)
   const currentCommit = computed(() => commits.value[currentIndex.value] || null)
@@ -29,10 +24,8 @@ export const usePlayerStore = defineStore('player', () => {
     totalFrames.value > 0 ? (currentIndex.value / (totalFrames.value - 1)) * 100 : 0
   )
 
-  // 播放定时器
   let playTimer: ReturnType<typeof setInterval> | null = null
 
-  // 加载时间线
   async function loadTimeline(repoId: number, filePath: string) {
     loading.value = true
     error.value = null
@@ -49,7 +42,6 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  // 播放控制
   function play() {
     if (isPlaying.value || !hasNext.value) return
     
@@ -116,7 +108,6 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
-  // 清理
   function reset() {
     pause()
     timeline.value = null
@@ -125,7 +116,6 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   return {
-    // 状态
     timeline,
     currentIndex,
     isPlaying,
@@ -133,7 +123,6 @@ export const usePlayerStore = defineStore('player', () => {
     loading,
     error,
     
-    // 计算属性
     commits,
     totalFrames,
     currentCommit,
@@ -142,7 +131,6 @@ export const usePlayerStore = defineStore('player', () => {
     hasPrev,
     progress,
     
-    // 方法
     loadTimeline,
     play,
     pause,

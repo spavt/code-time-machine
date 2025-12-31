@@ -5,7 +5,6 @@
 </template>
 
 <script setup lang="ts">
-// 文件浏览标签页 - 待开发
 </script>
 
 <style scoped>

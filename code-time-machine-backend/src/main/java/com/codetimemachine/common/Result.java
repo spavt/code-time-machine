@@ -2,9 +2,6 @@ package com.codetimemachine.common;
 
 import lombok.Data;
 
-/**
- * 统一响应结果
- */
 @Data
 public class Result<T> {
     

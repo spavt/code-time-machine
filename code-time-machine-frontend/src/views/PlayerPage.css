@@ -1,9 +1,4 @@
-/* =====================================================
-   CINEMATIC FILM REEL PLAYER
-   Aesthetic: 1930s Movie Theater Control Room
-   ===================================================== */
 
-/* --- Base Layout --- */
 .player-page {
   height: 100vh;
   display: flex;
@@ -13,7 +8,6 @@
   overflow: hidden;
 }
 
-/* Subtle film grain overlay */
 .player-page::before {
   content: '';
   position: absolute;
@@ -24,7 +18,6 @@
   z-index: 0;
 }
 
-/* --- Header: Projection Room Status Bar --- */
 .player-header {
   display: flex;
   align-items: center;
@@ -37,7 +30,6 @@
   z-index: 10;
 }
 
-/* Art Deco corner decorations */
 .player-header::before,
 .player-header::after {
   content: '◆';
@@ -107,7 +99,6 @@
   letter-spacing: 0.02em;
 }
 
-/* Frame Counter - now in header-left */
 .commit-info {
   display: flex;
   align-items: center;
@@ -138,7 +129,6 @@
 
 .tracking-mode-toggle { margin-right: 8px; }
 
-/* --- Main Content Area --- */
 .player-main {
   flex: 1;
   display: flex;
@@ -155,7 +145,6 @@
   position: relative;
 }
 
-/* Commit Panel - Film Slate Style */
 .commit-panel {
   padding: var(--spacing-md) var(--spacing-xl);
   background: linear-gradient(90deg, rgba(26, 26, 46, 0.95) 0%, rgba(42, 42, 62, 0.9) 50%, rgba(26, 26, 46, 0.95) 100%);
@@ -199,7 +188,6 @@
 .additions { color: var(--color-amber) !important; font-weight: 600; }
 .deletions { color: #f87171 !important; font-weight: 600; }
 
-/* --- Code Viewer: The Screen --- */
 .code-viewers {
   flex: 1;
   display: flex;
@@ -207,7 +195,6 @@
   position: relative;
 }
 
-/* Vignette effect */
 .code-viewers::after {
   content: '';
   position: absolute;
@@ -221,7 +208,6 @@
   gap: 0;
 }
 
-/* Film perforation divider for split view */
 .code-viewers--split::before {
   content: '';
   position: absolute;
@@ -291,7 +277,6 @@
   background: rgba(246, 185, 59, 0.05);
 }
 
-/* Changed lines with amber glow */
 .code-line--added {
   background: rgba(246, 185, 59, 0.12);
   border-left: 3px solid var(--color-amber);
@@ -342,7 +327,6 @@
   white-space: pre;
 }
 
-/* --- AI Chat: Director's Notes --- */
 .chat-section {
   width: 420px;
   display: flex;
@@ -353,7 +337,6 @@
   box-shadow: -5px 0 30px rgba(0, 0, 0, 0.5);
 }
 
-/* Paper texture overlay */
 .chat-section::before {
   content: '';
   position: absolute;
@@ -503,7 +486,6 @@
   background: rgba(26, 26, 46, 0.5);
 }
 
-/* --- Footer: Film Strip Control Deck --- */
 .player-footer {
   padding: var(--spacing-md) var(--spacing-xl);
   background: linear-gradient(180deg, rgba(26, 26, 46, 0.98) 0%, rgba(15, 15, 26, 1) 100%);
@@ -518,7 +500,6 @@
   gap: var(--spacing-lg);
 }
 
-/* Progress Indicator */
 .progress-info {
   display: flex;
   align-items: baseline;
@@ -545,7 +526,6 @@
   color: var(--text-muted);
 }
 
-/* Film Strip Timeline */
 .timeline-slider {
   flex: 1;
   position: relative;
@@ -555,7 +535,6 @@
   border: 1px solid var(--color-film-border);
 }
 
-/* Sprocket holes */
 .timeline-slider::before,
 .timeline-slider::after {
   content: '○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○ ○';
@@ -572,7 +551,6 @@
 .timeline-slider::before { top: 0; }
 .timeline-slider::after { bottom: 0; }
 
-/* Slider styling */
 .timeline-slider :deep(.el-slider__runway) {
   background: linear-gradient(90deg,
     transparent 0%,
@@ -597,7 +575,6 @@
   box-shadow: 0 0 15px var(--color-amber-glow);
 }
 
-/* Player Controls - Compact Inline */
 .player-controls {
   display: flex;
   align-items: center;
@@ -628,7 +605,6 @@
   opacity: 0.3;
 }
 
-/* Play Button - Large Brass Style */
 .play-button {
   width: 56px !important;
   height: 56px !important;
@@ -660,7 +636,6 @@
     inset 0 2px 0 rgba(255, 255, 255, 0.3) !important;
 }
 
-/* Speed Selector - RPM Dial Style */
 .player-controls :deep(.el-select) {
   margin-left: var(--spacing-md);
 }
@@ -677,7 +652,6 @@
   font-weight: 600;
 }
 
-/* Keyboard Shortcuts Hint */
 .shortcuts-hint {
   display: flex;
   align-items: center;
@@ -698,7 +672,6 @@ kbd {
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
 }
 
-/* --- Animations --- */
 .slide-right-enter-active,
 .slide-right-leave-active {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -710,7 +683,6 @@ kbd {
   opacity: 0;
 }
 
-/* Film strip rolling animation for playing state */
 @keyframes sprocket-roll {
   0% { letter-spacing: 12px; }
   50% { letter-spacing: 14px; }
@@ -722,10 +694,8 @@ kbd {
   animation: sprocket-roll 0.3s ease-in-out infinite;
 }
 
-/* --- View Mode Toggle --- */
 .view-mode-toggle { margin-right: var(--spacing-sm); }
 
-/* --- Streaming Cursor --- */
 .streaming-cursor {
   display: inline-block;
   color: var(--color-amber);
@@ -737,7 +707,6 @@ kbd {
   50% { opacity: 0; }
 }
 
-/* --- AI Analysis Styles --- */
 .ai-analysis-row {
   display: flex;
   align-items: center;
@@ -860,7 +829,6 @@ kbd {
   letter-spacing: 1px;
 }
 
-/* --- Commit Separator in Chat --- */
 .commit-separator {
   display: flex;
   align-items: center;
@@ -916,7 +884,6 @@ kbd {
   text-overflow: ellipsis;
 }
 
-/* --- Story Dialog --- */
 .story-content {
   min-height: 200px;
 }
@@ -944,7 +911,6 @@ kbd {
   color: var(--color-amber);
 }
 
-/* --- Loading Animation --- */
 .loading-dots span {
   display: inline-block;
   width: 8px;
@@ -963,23 +929,17 @@ kbd {
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* =====================================================
-   CLASSIC STYLE - 经典简洁风格
-   Original minimal design with standard accents
-   ===================================================== */
 
-/* Style Toggle Button */
 .style-toggle-btn {
   transition: all 0.3s ease;
 }
 
-/* --- Classic Style Overrides --- */
 .player-page--classic {
   background: var(--bg-main);
 }
 
 .player-page--classic::before {
-  display: none; /* 移除胶片纹理 */
+  display: none;
 }
 
 .player-page--classic .player-header {
@@ -990,7 +950,7 @@ kbd {
 
 .player-page--classic .player-header::before,
 .player-page--classic .player-header::after {
-  display: none; /* 移除装饰性菱形 */
+  display: none;
 }
 
 .player-page--classic .file-info {
@@ -1051,11 +1011,11 @@ kbd {
 }
 
 .player-page--classic .code-viewers::after {
-  display: none; /* 移除暗角效果 */
+  display: none;
 }
 
 .player-page--classic .code-viewers--split::before {
-  display: none; /* 移除胶片孔洞分隔线 */
+  display: none;
 }
 
 .player-page--classic .code-viewers--split {
@@ -1117,7 +1077,6 @@ kbd {
   100% { background: rgba(248, 81, 73, 0.15); }
 }
 
-/* Classic Chat Section */
 .player-page--classic .chat-section {
   background: var(--bg-card);
   border-left: 1px solid var(--border-color);
@@ -1166,7 +1125,6 @@ kbd {
   background: transparent;
 }
 
-/* Classic Footer */
 .player-page--classic .player-footer {
   background: var(--bg-card);
   border-top: 1px solid var(--border-color);
@@ -1181,7 +1139,7 @@ kbd {
 
 .player-page--classic .timeline-slider::before,
 .player-page--classic .timeline-slider::after {
-  display: none; /* 移除胶片孔洞 */
+  display: none;
 }
 
 .player-page--classic .progress-current {
@@ -1236,13 +1194,11 @@ kbd {
   box-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
 }
 
-/* Classic: 移除播放动画 */
 .player-page--classic.is-playing .timeline-slider::before,
 .player-page--classic.is-playing .timeline-slider::after {
   animation: none;
 }
 
-/* Classic AI Analysis */
 .player-page--classic .ai-analysis-btn {
   background: rgba(var(--color-primary-rgb), 0.1) !important;
   border-color: rgba(var(--color-primary-rgb), 0.3) !important;
@@ -1262,7 +1218,6 @@ kbd {
   color: var(--color-primary);
 }
 
-/* Classic Story Dialog */
 .player-page--classic .story-milestones {
   border-top-color: var(--border-color);
 }
@@ -1271,9 +1226,6 @@ kbd {
   color: var(--color-primary);
 }
 
-/* =====================================================
-   STYLE SELECTOR STYLING
-   ===================================================== */
 .style-selector .el-input__wrapper {
   background: rgba(255, 255, 255, 0.05) !important;
   border: 1px solid var(--color-film-border) !important;
@@ -1285,10 +1237,6 @@ kbd {
   color: var(--text-muted);
 }
 
-/* =====================================================
-   NEON STYLE - 霓虹赛博朋克风格
-   Cyberpunk with glowing effects and electric colors
-   ===================================================== */
 
 .player-page--neon {
   background: linear-gradient(135deg, #0a0a15 0%, #1a0a2e 50%, #0a1a2e 100%);
@@ -1401,7 +1349,6 @@ kbd {
   background: rgba(0, 255, 255, 0.03);
 }
 
-/* Neon Chat Section */
 .player-page--neon .chat-section {
   background: linear-gradient(180deg, rgba(10, 10, 25, 0.98) 0%, rgba(15, 5, 25, 1) 100%);
   border-left: 2px solid rgba(255, 0, 255, 0.3);
@@ -1449,7 +1396,6 @@ kbd {
   text-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
 }
 
-/* Neon Footer */
 .player-page--neon .player-footer {
   background: linear-gradient(180deg, rgba(15, 10, 25, 0.98) 0%, rgba(10, 10, 20, 1) 100%);
   border-top: 2px solid rgba(0, 255, 255, 0.2);
@@ -1516,10 +1462,6 @@ kbd {
   text-shadow: 0 0 10px #ff00ff;
 }
 
-/* =====================================================
-   GLASSMORPHISM STYLE - 玻璃拟态风格
-   Frosted glass effect with soft gradients
-   ===================================================== */
 
 .player-page--glassmorphism {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%);
@@ -1661,7 +1603,6 @@ kbd {
   color: rgba(255, 255, 255, 0.9);
 }
 
-/* Glassmorphism Chat Section */
 .player-page--glassmorphism .chat-section {
   background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(20px);
@@ -1716,7 +1657,6 @@ kbd {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Glassmorphism Footer */
 .player-page--glassmorphism .player-footer {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(20px);
@@ -1795,7 +1735,6 @@ kbd {
   color: #667eea;
 }
 
-/* Glassmorphism: Header buttons */
 .player-page--glassmorphism .player-header :deep(.el-button) {
   background: rgba(255, 255, 255, 0.15) !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
@@ -1815,12 +1754,7 @@ kbd {
   color: #fff !important;
 }
 
-/* =====================================================
-   SOFT UI STYLE - 柔和拟物风格 (Neumorphism)
-   Soft shadows, embossed elements, tactile interactions
-   ===================================================== */
 
-/* CSS Variables for Soft UI */
 .player-page--softui {
   --softui-bg: #e4e9f0;
   --softui-bg-dark: #dde2e9;
@@ -1843,7 +1777,6 @@ kbd {
   --softui-transition: all 180ms ease-out;
 }
 
-/* Base Layout */
 .player-page--softui {
   background: linear-gradient(145deg, #e8edf5 0%, #dce1e8 100%);
 }
@@ -1852,7 +1785,6 @@ kbd {
   display: none;
 }
 
-/* Header Bar */
 .player-page--softui .player-header {
   background: var(--softui-bg);
   border-bottom: none;
@@ -1887,7 +1819,6 @@ kbd {
   letter-spacing: 0;
 }
 
-/* Frame Counter - Capsule Style */
 .player-page--softui .commit-info {
   background: var(--softui-bg);
   border: none;
@@ -1908,7 +1839,6 @@ kbd {
   border-left: 1px solid var(--softui-text-muted);
 }
 
-/* Main Content Area */
 .player-page--softui .player-main {
   padding: 16px;
   gap: 16px;
@@ -1921,7 +1851,6 @@ kbd {
   overflow: hidden;
 }
 
-/* Commit Panel */
 .player-page--softui .commit-panel {
   background: var(--softui-bg);
   border-bottom: none;
@@ -1958,7 +1887,6 @@ kbd {
   font-weight: 600;
 }
 
-/* Code Viewer */
 .player-page--softui .code-viewers {
   margin: 0 12px 12px 12px;
   border-radius: var(--softui-radius-sm);
@@ -2055,7 +1983,6 @@ kbd {
   color: var(--softui-text-muted);
 }
 
-/* Chat Section */
 .player-page--softui .chat-section {
   background: var(--softui-bg);
   border-left: none;
@@ -2196,7 +2123,6 @@ kbd {
   color: var(--softui-accent) !important;
 }
 
-/* Footer Controls */
 .player-page--softui .player-footer {
   background: var(--softui-bg);
   border-top: none;
@@ -2217,7 +2143,6 @@ kbd {
   color: var(--softui-text-muted);
 }
 
-/* Timeline Slider */
 .player-page--softui .timeline-slider {
   background: var(--softui-bg);
   border: none;
@@ -2258,7 +2183,6 @@ kbd {
   box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
 }
 
-/* Player Controls */
 .player-page--softui .player-controls :deep(.el-button-group) {
   gap: 8px;
 }
@@ -2288,7 +2212,6 @@ kbd {
   box-shadow: none;
 }
 
-/* Play Button - Prominent */
 .player-page--softui .play-button {
   width: 52px !important;
   height: 52px !important;
@@ -2319,7 +2242,6 @@ kbd {
     inset -2px -2px 6px rgba(255, 255, 255, 0.1) !important;
 }
 
-/* Speed Selector */
 .player-page--softui .player-controls :deep(.el-select .el-input__wrapper) {
   background: var(--softui-bg) !important;
   border: none !important;
@@ -2333,7 +2255,6 @@ kbd {
   font-weight: 500;
 }
 
-/* Keyboard Hints */
 .player-page--softui .shortcuts-hint {
   color: var(--softui-text-muted);
 }
@@ -2348,7 +2269,6 @@ kbd {
   padding: 4px 10px;
 }
 
-/* Header Buttons */
 .player-page--softui .player-header :deep(.el-button) {
   background: var(--softui-bg) !important;
   border: none !important;
@@ -2374,7 +2294,6 @@ kbd {
   color: #fff !important;
 }
 
-/* Button Groups */
 .player-page--softui .player-header :deep(.el-button-group) {
   box-shadow: var(--softui-shadow-raised-sm);
   border-radius: var(--softui-radius-sm);
@@ -2403,7 +2322,6 @@ kbd {
   background: linear-gradient(135deg, #5a72d6, #6b42a1) !important;
 }
 
-/* Selects */
 .player-page--softui .style-selector :deep(.el-input__wrapper) {
   background: var(--softui-bg) !important;
   border: none !important;
@@ -2415,7 +2333,6 @@ kbd {
   color: var(--softui-text-primary) !important;
 }
 
-/* AI Analysis */
 .player-page--softui .ai-analysis-row {
   border-top-color: rgba(0, 0, 0, 0.05);
 }
@@ -2442,7 +2359,6 @@ kbd {
   color: var(--softui-accent);
 }
 
-/* Commit Separator */
 .player-page--softui .commit-separator {
   color: var(--softui-text-muted);
 }
@@ -2476,7 +2392,6 @@ kbd {
   color: var(--softui-text-secondary);
 }
 
-/* Loading animation */
 .player-page--softui .loading-dots span {
   background: var(--softui-accent);
 }
@@ -2485,13 +2400,11 @@ kbd {
   color: var(--softui-accent);
 }
 
-/* Remove playing animations */
 .player-page--softui.is-playing .timeline-slider::before,
 .player-page--softui.is-playing .timeline-slider::after {
   animation: none;
 }
 
-/* Analysis Popover */
 .player-page--softui .analysis-header {
   background: var(--softui-accent-light);
   border-radius: var(--softui-radius-sm) var(--softui-radius-sm) 0 0;
@@ -2510,7 +2423,6 @@ kbd {
   color: var(--softui-accent);
 }
 
-/* Story Dialog */
 .player-page--softui .story-milestones {
   border-top-color: rgba(0, 0, 0, 0.08);
 }
@@ -2519,12 +2431,7 @@ kbd {
   color: var(--softui-accent);
 }
 
-/* =====================================================
-   SOFT UI DARK STYLE - 柔和深色拟物风格
-   Dark neumorphism with inverted shadows
-   ===================================================== */
 
-/* CSS Variables for Soft UI Dark */
 .player-page--softui-dark {
   --softui-bg: #2d3748;
   --softui-bg-dark: #1a202c;
@@ -2549,7 +2456,6 @@ kbd {
   --softui-transition: all 180ms ease-out;
 }
 
-/* Base Layout */
 .player-page--softui-dark {
   background: linear-gradient(145deg, #2d3748 0%, #1a202c 100%);
 }
@@ -2558,7 +2464,6 @@ kbd {
   display: none;
 }
 
-/* Header Bar */
 .player-page--softui-dark .player-header {
   background: var(--softui-bg);
   border-bottom: none;
@@ -2593,7 +2498,6 @@ kbd {
   letter-spacing: 0;
 }
 
-/* Frame Counter - Capsule Style */
 .player-page--softui-dark .commit-info {
   background: var(--softui-bg);
   border: none;
@@ -2614,7 +2518,6 @@ kbd {
   border-left: 1px solid var(--softui-text-muted);
 }
 
-/* Main Content Area */
 .player-page--softui-dark .player-main {
   padding: 16px;
   gap: 16px;
@@ -2627,7 +2530,6 @@ kbd {
   overflow: hidden;
 }
 
-/* Commit Panel */
 .player-page--softui-dark .commit-panel {
   background: var(--softui-bg);
   border-bottom: none;
@@ -2664,7 +2566,6 @@ kbd {
   font-weight: 600;
 }
 
-/* Code Viewer */
 .player-page--softui-dark .code-viewers {
   margin: 0 12px 12px 12px;
   border-radius: var(--softui-radius-sm);
@@ -2720,7 +2621,6 @@ kbd {
   color: #e2e8f0;
 }
 
-/* Syntax highlighting overrides for dark mode */
 .player-page--softui-dark .code-content .hljs {
   color: #e2e8f0;
 }
@@ -2795,7 +2695,6 @@ kbd {
   color: var(--softui-text-muted);
 }
 
-/* Chat Section */
 .player-page--softui-dark .chat-section {
   background: var(--softui-bg);
   border-left: none;
@@ -2937,7 +2836,6 @@ kbd {
   color: var(--softui-accent) !important;
 }
 
-/* Footer Controls */
 .player-page--softui-dark .player-footer {
   background: var(--softui-bg);
   border-top: none;
@@ -2958,7 +2856,6 @@ kbd {
   color: var(--softui-text-muted);
 }
 
-/* Timeline Slider */
 .player-page--softui-dark .timeline-slider {
   background: var(--softui-bg);
   border: none;
@@ -2999,7 +2896,6 @@ kbd {
   box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
 }
 
-/* Player Controls */
 .player-page--softui-dark .player-controls :deep(.el-button-group) {
   gap: 8px;
 }
@@ -3029,7 +2925,6 @@ kbd {
   box-shadow: none;
 }
 
-/* Play Button - Prominent */
 .player-page--softui-dark .play-button {
   width: 52px !important;
   height: 52px !important;
@@ -3060,7 +2955,6 @@ kbd {
     inset -2px -2px 6px rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Speed Selector */
 .player-page--softui-dark .player-controls :deep(.el-select .el-input__wrapper) {
   background: var(--softui-bg) !important;
   border: none !important;
@@ -3074,7 +2968,6 @@ kbd {
   font-weight: 500;
 }
 
-/* Keyboard Hints */
 .player-page--softui-dark .shortcuts-hint {
   color: var(--softui-text-muted);
 }
@@ -3089,7 +2982,6 @@ kbd {
   padding: 4px 10px;
 }
 
-/* Header Buttons */
 .player-page--softui-dark .player-header :deep(.el-button) {
   background: var(--softui-bg) !important;
   border: none !important;
@@ -3115,7 +3007,6 @@ kbd {
   color: #1a202c !important;
 }
 
-/* Button Groups */
 .player-page--softui-dark .player-header :deep(.el-button-group) {
   box-shadow: var(--softui-shadow-raised-sm);
   border-radius: var(--softui-radius-sm);
@@ -3144,7 +3035,6 @@ kbd {
   background: linear-gradient(135deg, #7ec8f0, #a685e8) !important;
 }
 
-/* Selects */
 .player-page--softui-dark .style-selector :deep(.el-input__wrapper) {
   background: var(--softui-bg) !important;
   border: none !important;
@@ -3156,7 +3046,6 @@ kbd {
   color: var(--softui-text-primary) !important;
 }
 
-/* AI Analysis */
 .player-page--softui-dark .ai-analysis-row {
   border-top-color: rgba(255, 255, 255, 0.05);
 }
@@ -3183,7 +3072,6 @@ kbd {
   color: var(--softui-accent);
 }
 
-/* Commit Separator */
 .player-page--softui-dark .commit-separator {
   color: var(--softui-text-muted);
 }
@@ -3217,7 +3105,6 @@ kbd {
   color: var(--softui-text-secondary);
 }
 
-/* Loading animation */
 .player-page--softui-dark .loading-dots span {
   background: var(--softui-accent);
 }
@@ -3226,13 +3113,11 @@ kbd {
   color: var(--softui-accent);
 }
 
-/* Remove playing animations */
 .player-page--softui-dark.is-playing .timeline-slider::before,
 .player-page--softui-dark.is-playing .timeline-slider::after {
   animation: none;
 }
 
-/* Analysis Popover */
 .player-page--softui-dark .analysis-header {
   background: var(--softui-accent-light);
   border-radius: var(--softui-radius-sm) var(--softui-radius-sm) 0 0;
@@ -3267,7 +3152,6 @@ kbd {
   color: var(--softui-text-muted);
 }
 
-/* Story Dialog */
 .player-page--softui-dark .story-milestones {
   border-top-color: rgba(255, 255, 255, 0.08);
 }

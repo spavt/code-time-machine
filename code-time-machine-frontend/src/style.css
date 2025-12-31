@@ -1,60 +1,41 @@
-/* =====================================================
-   Code Time Machine - Premium UI
-   Design: Nebula / Glassmorphism / Clean Dark
-   ===================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap');
 
 :root {
-  /* --- Palette: Nebula Dark --- */
 
-  /* Brand Colors */
   --primary-hue: 250;
-  /* Indigo/Violet */
   --primary-sat: 95%;
   --primary-lit: 65%;
   --color-primary: hsl(var(--primary-hue), var(--primary-sat), var(--primary-lit));
   --color-primary-glow: rgba(124, 58, 237, 0.15);
 
   --color-accent: #38bdf8;
-  /* Sky Blue */
   --color-purple: #c084fc;
   --color-pink: #f472b6;
 
-  /* Functional Colors */
   --color-success: #4ade80;
   --color-warning: #fbbf24;
   --color-danger: #f87171;
   --color-info: #60a5fa;
 
-  /* Backgrounds (Deep Space) */
   --bg-main: #030712;
-  /* Gray 950+ */
   --bg-secondary: #0b1121;
-  /* Slightly lighter */
   --bg-tertiary: #111827;
   --bg-card: rgba(17, 24, 39, 0.7);
-  /* Glassy backdrop */
   --bg-glass: rgba(255, 255, 255, 0.03);
   --bg-glass-hover: rgba(255, 255, 255, 0.08);
   --bg-hover: rgba(255, 255, 255, 0.05);
   --code-bg: #0d1117;
 
-  /* Text */
   --text-primary: #f8fafc;
-  /* Slate 50 */
   --text-secondary: #94a3b8;
-  /* Slate 400 */
   --text-muted: #64748b;
-  /* Slate 500 */
   --text-dark: #0f172a;
 
-  /* Borders */
   --border-color: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.15);
   --border-highlight: rgba(192, 132, 252, 0.5);
 
-  /* Spacing & Radius */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
@@ -67,11 +48,9 @@
   --radius-xl: 24px;
   --radius-full: 9999px;
 
-  /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  /* Transitions */
   --ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
   --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
   --duration-fast: 0.2s;
@@ -79,12 +58,9 @@
   --transition-fast: 0.2s ease;
   --transition-normal: 0.3s ease;
 
-  /* --- Cinematic Theme (Film Reel Aesthetic) --- */
-  /* Typography */
   --font-display: 'Playfair Display', Georgia, serif;
   --font-code: 'Source Code Pro', 'JetBrains Mono', monospace;
 
-  /* Film Reel Colors */
   --color-amber: #F6B93B;
   --color-amber-glow: rgba(246, 185, 59, 0.3);
   --color-amber-soft: rgba(246, 185, 59, 0.15);
@@ -93,34 +69,26 @@
   --color-film-border: #2a2a3e;
   --color-projector-light: rgba(255, 248, 220, 0.9);
 
-  /* Film Strip Dimensions */
   --film-sprocket-size: 8px;
   --film-strip-height: 48px;
 
-  /* Theatrical Shadows */
   --shadow-vignette: inset 0 0 100px rgba(0, 0, 0, 0.4);
   --shadow-projector: 0 0 60px rgba(246, 185, 59, 0.2);
   --shadow-mechanical: 0 4px 0 rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
-/* =====================================================
-   Light Theme Variables
-   ===================================================== */
 body.light-theme {
-  /* Brand Colors - slightly adjusted for light mode */
   --color-primary: hsl(250, 85%, 55%);
   --color-primary-glow: rgba(147, 51, 234, 0.1);
   --color-accent: #0284c7;
   --color-purple: #9333ea;
   --color-pink: #db2777;
 
-  /* Functional Colors - darker for better contrast */
   --color-success: #16a34a;
   --color-warning: #ca8a04;
   --color-danger: #dc2626;
   --color-info: #2563eb;
 
-  /* Backgrounds (Clean Light) */
   --bg-main: #f8fafc;
   --bg-secondary: #f1f5f9;
   --bg-tertiary: #e2e8f0;
@@ -130,31 +98,26 @@ body.light-theme {
   --bg-hover: rgba(0, 0, 0, 0.03);
   --code-bg: #ffffff;
 
-  /* Text - inverted for light mode */
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #64748b;
   --text-dark: #0f172a;
   --text-inverse: #ffffff;
 
-  /* Borders - darker for visibility */
   --border-color: rgba(0, 0, 0, 0.1);
   --border-hover: rgba(0, 0, 0, 0.2);
   --border-highlight: rgba(147, 51, 234, 0.5);
 
-  /* Shadows for light mode */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 
-  /* Code line highlights */
   --code-line-added-bg: rgba(22, 163, 74, 0.15);
   --code-line-added-border: #16a34a;
   --code-line-deleted-bg: rgba(220, 38, 38, 0.15);
   --code-line-deleted-border: #dc2626;
 }
 
-/* Default dark theme shadow and code line variables */
 :root {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
@@ -166,7 +129,6 @@ body.light-theme {
   --code-line-deleted-border: #f85149;
 }
 
-/* Light theme specific overrides */
 body.light-theme .glass-panel {
   background: rgba(255, 255, 255, 0.8);
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -224,7 +186,6 @@ body.light-theme .el-dialog__body {
   color: #475569 !important;
 }
 
-/* Select dropdown */
 body.light-theme .el-select-dropdown {
   background: #ffffff !important;
   border: 1px solid rgba(0, 0, 0, 0.1) !important;
@@ -243,7 +204,6 @@ body.light-theme .el-select-dropdown__item.is-selected {
   background: rgba(147, 51, 234, 0.1) !important;
 }
 
-/* Popover */
 body.light-theme .el-popover {
   background: #ffffff !important;
   border: 1px solid rgba(0, 0, 0, 0.1) !important;
@@ -253,7 +213,6 @@ body.light-theme .el-popover__title {
   color: #0f172a !important;
 }
 
-/* Timeline */
 body.light-theme .el-timeline-item__content {
   color: #0f172a !important;
 }
@@ -262,12 +221,10 @@ body.light-theme .el-timeline-item__timestamp {
   color: #64748b !important;
 }
 
-/* Tag */
 body.light-theme .el-tag {
   border-color: rgba(0, 0, 0, 0.1) !important;
 }
 
-/* Slider */
 body.light-theme .el-slider__runway {
   background-color: #e2e8f0 !important;
 }
@@ -276,7 +233,6 @@ body.light-theme .el-slider__bar {
   background: linear-gradient(90deg, hsl(250, 85%, 55%), #9333ea) !important;
 }
 
-/* Tabs */
 body.light-theme .el-tabs__item {
   color: #64748b !important;
 }
@@ -285,12 +241,10 @@ body.light-theme .el-tabs__item.is-active {
   color: hsl(250, 85%, 55%) !important;
 }
 
-/* Progress */
 body.light-theme .el-progress__text {
   color: #0f172a !important;
 }
 
-/* Scrollbar */
 body.light-theme ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
 }
@@ -299,7 +253,6 @@ body.light-theme ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
 }
 
-/* Highlight.js - Light Theme Override */
 body.light-theme .hljs {
   background: #ffffff !important;
   color: #24292e !important;
@@ -339,7 +292,6 @@ body.light-theme .hljs-class {
   color: #22863a !important;
 }
 
-/* Base Setup */
 *,
 *::before,
 *::after {
@@ -357,7 +309,6 @@ body {
   overflow-x: hidden;
 }
 
-/* --- Typography --- */
 h1,
 h2,
 h3,
@@ -375,7 +326,6 @@ a {
   transition: color var(--duration-fast);
 }
 
-/* --- Utilities --- */
 .glass-panel {
   background: var(--bg-card);
   backdrop-filter: blur(12px);
@@ -398,8 +348,6 @@ a {
   background-clip: text;
 }
 
-/* --- Element Plus Overrides (Deep Integration) --- */
-/* Button */
 .el-button {
   --el-button-font-weight: 500;
   border-radius: var(--radius-sm);
@@ -415,7 +363,6 @@ a {
 .el-button--primary:hover,
 .el-button--primary:focus {
   background: linear-gradient(135deg, #7c3aed, #a855f7);
-  /* Hardcoded darker purple */
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(124, 58, 237, 0.4);
 }
@@ -432,7 +379,6 @@ a {
   color: var(--text-primary) !important;
 }
 
-/* Input */
 .el-input__wrapper {
   background-color: var(--bg-secondary) !important;
   border: 1px solid var(--border-color) !important;
@@ -456,7 +402,6 @@ a {
   font-family: var(--font-sans) !important;
 }
 
-/* Card */
 .el-card {
   background: var(--bg-card) !important;
   border: 1px solid var(--border-color) !important;
@@ -472,7 +417,6 @@ a {
   border-color: var(--border-hover) !important;
 }
 
-/* Tabs */
 .el-tabs__item {
   color: var(--text-muted) !important;
   font-weight: 500;
@@ -489,10 +433,8 @@ a {
   border-radius: 3px;
 }
 
-/* Dialog/Modal */
 .el-dialog {
   background: #0f172a !important;
-  /* Slate 900 */
   border: 1px solid var(--border-color) !important;
   border-radius: var(--radius-lg) !important;
 }
@@ -505,7 +447,6 @@ a {
   color: var(--text-secondary) !important;
 }
 
-/* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -524,7 +465,6 @@ a {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* Loaders/Animations */
 @keyframes float {
 
   0%,

@@ -59,12 +59,10 @@ export const useRepositoryStore = defineStore('repository', () => {
       const repo = await repositoryApi.analyzeByUrl(url, options)
       currentRepo.value = repo
 
-      // 轮询分析进度
       if (repo.status === 1) {
         await pollAnalyzeProgress(repo.id)
       }
 
-      // 添加到列表
       const existingIndex = repositories.value.findIndex(r => r.id === repo.id)
       if (existingIndex >= 0) {
         repositories.value[existingIndex] = repo
@@ -89,7 +87,6 @@ export const useRepositoryStore = defineStore('repository', () => {
       const repo = await repositoryApi.fetchMoreHistory(repoId, depth)
       currentRepo.value = repo
 
-      // 更新列表中的仓库
       const existingIndex = repositories.value.findIndex(r => r.id === repoId)
       if (existingIndex >= 0) {
         repositories.value[existingIndex] = repo
@@ -144,15 +141,12 @@ export const useRepositoryStore = defineStore('repository', () => {
       const repo = await repositoryApi.getById(id)
       currentRepo.value = repo
 
-      // 同时获取提交列表
       await fetchCommits(id)
 
-      // 获取概览信息
       try {
         const overview = await repositoryApi.getOverview(id)
         contributors.value = overview.topContributors || []
       } catch {
-        // 概览信息非必需
       }
 
       return repo
@@ -198,11 +192,9 @@ export const useRepositoryStore = defineStore('repository', () => {
     currentCommit.value = commit
 
     try {
-      // 获取文件变更
       const changes = await commitApi.getFileChanges(commit.id)
       fileChanges.value = changes
 
-      // 获取AI分析
       try {
         const analysis = await commitApi.getAiAnalysis(commit.id)
         currentAnalysis.value = analysis

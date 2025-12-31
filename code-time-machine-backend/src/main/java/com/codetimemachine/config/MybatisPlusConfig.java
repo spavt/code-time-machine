@@ -10,15 +10,9 @@ import org.springframework.context.annotation.Configuration;
 
 import java.time.LocalDateTime;
 
-/**
- * MyBatis Plus配置
- */
 @Configuration
 public class MybatisPlusConfig {
     
-    /**
-     * 分页插件
-     */
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
@@ -26,9 +20,6 @@ public class MybatisPlusConfig {
         return interceptor;
     }
     
-    /**
-     * 自动填充处理器
-     */
     @Bean
     public MetaObjectHandler metaObjectHandler() {
         return new MetaObjectHandler() {

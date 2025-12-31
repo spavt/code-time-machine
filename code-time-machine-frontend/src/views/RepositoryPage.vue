@@ -42,7 +42,6 @@ function handleTabChange(tab: string) {
 
 <template>
   <div class="repository-page" v-loading="loading">
-    <!-- 导航栏 -->
     <header class="header">
       <div class="header-content">
         <div class="header-left">
@@ -69,7 +68,6 @@ function handleTabChange(tab: string) {
     </header>
 
     <main class="main-content" v-if="repoStore.currentRepo">
-      <!-- 仓库信息卡片 -->
       <div class="repo-info-card">
         <div class="repo-header">
           <div class="repo-main">
@@ -99,7 +97,6 @@ function handleTabChange(tab: string) {
         </div>
       </div>
 
-      <!-- 标签页 -->
       <div class="tabs-section">
         <el-tabs v-model="activeTab" @tab-change="handleTabChange">
           <el-tab-pane label="概览" name="overview">
@@ -124,7 +121,6 @@ function handleTabChange(tab: string) {
           </el-tab-pane>
         </el-tabs>
 
-        <!-- 子路由内容 -->
         <div class="tab-content">
           <router-view />
         </div>

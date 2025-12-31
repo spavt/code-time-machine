@@ -15,7 +15,6 @@ const fileList = ref<Array<{ path: string; modifyCount: number }>>([])
 const loading = ref(false)
 const loadingMore = ref(false)
 
-// AI 分析相关状态
 const analysisMap = ref<Map<number, AiAnalysis>>(new Map())
 const analysisLoading = ref<Set<number>>(new Set())
 const expandedAnalysis = ref<Set<number>>(new Set())
@@ -24,13 +23,11 @@ const commits = computed(() => repoStore.commitsByOrder)
 const commitsTotal = computed(() => repoStore.commitsTotal)
 const hasMoreCommits = computed(() => repoStore.hasMoreCommits)
 
-// ========== 虚拟滚动配置 ==========
-const VIRTUAL_THRESHOLD = 50  // 超过 50 条启用虚拟滚动
-const TIMELINE_ITEM_HEIGHT = 220  // 估算每个 commit 卡片高度（包含边距）
+const VIRTUAL_THRESHOLD = 50
+const TIMELINE_ITEM_HEIGHT = 220
 
 const useVirtualTimeline = computed(() => commits.value.length > VIRTUAL_THRESHOLD)
 
-// 为每个 commit 添加原始索引
 const commitsWithIndex = computed(() => 
   commits.value.map((commit, index) => ({ ...commit, _index: index }))
 )
@@ -45,7 +42,6 @@ const {
 
 
 onMounted(async () => {
-  // 获取文件列表
   if (repoStore.currentRepo) {
     try {
       const tree = await fileApi.getFileTree(repoStore.currentRepo.id)
@@ -67,7 +63,6 @@ function flattenTree(nodes: any[], prefix = ''): Array<{ path: string; modifyCou
       result.push(...flattenTree(node.children, path))
     }
   }
-  // 按修改次数降序排列
   return result.sort((a, b) => b.modifyCount - a.modifyCount)
 }
 
@@ -99,25 +94,20 @@ async function loadMore() {
   }
 }
 
-// ========== AI 分析相关函数 ==========
 
-// 获取或触发 AI 分析
 async function toggleAnalysis(commitId: number) {
-  // 如果已展开，则收起
   if (expandedAnalysis.value.has(commitId)) {
     expandedAnalysis.value.delete(commitId)
     expandedAnalysis.value = new Set(expandedAnalysis.value)
     return
   }
 
-  // 如果已有分析结果，直接展开
   if (analysisMap.value.has(commitId)) {
     expandedAnalysis.value.add(commitId)
     expandedAnalysis.value = new Set(expandedAnalysis.value)
     return
   }
 
-  // 先尝试获取已有分析
   await fetchOrTriggerAnalysis(commitId)
 }
 
@@ -128,7 +118,6 @@ async function fetchOrTriggerAnalysis(commitId: number) {
   analysisLoading.value = new Set(analysisLoading.value)
 
   try {
-    // 先尝试获取已有分析
     try {
       const analysis = await commitApi.getAiAnalysis(commitId)
       analysisMap.value.set(commitId, analysis)
@@ -137,10 +126,8 @@ async function fetchOrTriggerAnalysis(commitId: number) {
       expandedAnalysis.value = new Set(expandedAnalysis.value)
       return
     } catch {
-      // 404 表示没有分析，需要触发新分析
     }
 
-    // 触发新分析
     ElMessage.info('正在生成 AI 分析，请稍候...')
     const analysis = await commitApi.triggerAnalysis(commitId)
     analysisMap.value.set(commitId, analysis)
@@ -183,7 +170,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
 
 <template>
   <div class="timeline-tab">
-    <!-- 文件选择器 -->
     <div class="file-selector">
       <el-select 
         v-model="selectedFile" 
@@ -213,7 +199,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
       </el-button>
     </div>
 
-    <!-- 提交时间轴 -->
     <div class="timeline-container">
       <div class="timeline-header">
         <h3>提交时间轴</h3>
@@ -223,7 +208,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
         </span>
       </div>
 
-      <!-- 虚拟滚动模式 -->
       <div 
         v-if="useVirtualTimeline"
         class="timeline timeline--virtual"
@@ -267,7 +251,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
                   </div>
                 </div>
 
-                <!-- 文件变更列表 -->
                 <div class="file-changes" v-if="commit.fileChanges && commit.fileChanges.length > 0">
                   <div 
                     v-for="file in commit.fileChanges.slice(0, 5)" 
@@ -290,7 +273,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
                   </div>
                 </div>
 
-                <!-- AI 分析按钮（虚拟滚动模式下简化显示） -->
                 <div class="ai-analysis-section">
                   <div 
                     class="ai-analysis-trigger"
@@ -311,7 +293,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
         </div>
       </div>
 
-      <!-- 普通渲染模式 -->
       <div v-else class="timeline">
         <div class="timeline-line"></div>
         
@@ -351,7 +332,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
                 </div>
               </div>
 
-              <!-- 文件变更列表 -->
               <div class="file-changes" v-if="commit.fileChanges && commit.fileChanges.length > 0">
                 <div 
                   v-for="file in commit.fileChanges.slice(0, 5)" 
@@ -374,7 +354,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
                 </div>
               </div>
 
-              <!-- AI 分析面板 -->
               <div class="ai-analysis-section">
                 <div 
                   class="ai-analysis-trigger"
@@ -392,7 +371,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
                   </el-icon>
                 </div>
 
-                <!-- 展开的分析内容 -->
                 <transition name="slide-fade">
                   <div v-if="isAnalysisExpanded(commit.id) && getAnalysis(commit.id)" class="ai-analysis-content">
                     <div class="analysis-item" v-if="getAnalysis(commit.id)?.summary">
@@ -411,7 +389,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
                     </div>
 
                     <div class="analysis-footer">
-                      <!-- 分类标签 -->
                       <span 
                         v-if="getCategoryInfo(getAnalysis(commit.id)?.changeCategory)"
                         class="category-tag"
@@ -424,7 +401,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
                         {{ getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.label }}
                       </span>
 
-                      <!-- 评分 -->
                       <div class="analysis-scores" v-if="getAnalysis(commit.id)?.complexityScore || getAnalysis(commit.id)?.importanceScore">
                         <span class="score-item" v-if="getAnalysis(commit.id)?.complexityScore">
                           <span class="score-label">复杂度</span>
@@ -445,7 +421,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
       </div>
 
 
-      <!-- 加载更多 -->
       <div class="load-more" v-if="hasMoreCommits">
         <el-button :loading="loadingMore" @click="loadMore">
           加载更多 ({{ commits.length }}/{{ commitsTotal }})
@@ -518,7 +493,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
   padding-left: 40px;
 }
 
-/* 虚拟滚动模式样式 */
 .timeline--virtual {
   max-height: 70vh;
   overflow-y: auto;
@@ -526,7 +500,7 @@ function renderStars(score: number | undefined, max: number = 10): string {
 }
 
 .timeline-item {
-  min-height: 200px;  /* 确保虚拟滚动高度一致 */
+  min-height: 200px;
 }
 
 
@@ -739,7 +713,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
   }
 }
 
-/* ========== AI 分析面板样式 ========== */
 .ai-analysis-section {
   margin-top: var(--spacing-md);
   padding-top: var(--spacing-sm);
@@ -862,7 +835,6 @@ function renderStars(score: number | undefined, max: number = 10): string {
   letter-spacing: 1px;
 }
 
-/* 过渡动画 */
 .slide-fade-enter-active {
   transition: all 0.3s ease-out;
 }

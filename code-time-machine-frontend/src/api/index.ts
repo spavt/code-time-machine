@@ -13,7 +13,6 @@ import type {
   SearchFilter
 } from '@/types'
 
-// 创建axios实例
 const api: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   timeout: 30000,
@@ -350,8 +349,8 @@ export const statsApi = {
   },
 
   getHeatmap(repoId: number): Promise<Array<{
-    day: number // 0-6 周日到周六
-    hour: number // 0-23
+    day: number
+    hour: number
     count: number
   }>> {
     return api.get(`/stats/heatmap/${repoId}`)

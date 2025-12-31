@@ -1,6 +1,3 @@
-// =====================================================
-// AI代码时光机 - AI对话 Composable
-// =====================================================
 
 import { ref, computed } from 'vue'
 import { chatApi } from '@/api'
@@ -11,27 +8,23 @@ export function useChat(sessionId: string) {
   const isLoading = ref(false)
   const error = ref<string | null>(null)
 
-  // 当前上下文
   const context = ref<{
     repoId?: number
     commitId?: number
-    commitOrder?: number     // 当前帧号
-    shortHash?: string       // 当前提交短哈希
+    commitOrder?: number
+    shortHash?: string
     filePath?: string
     codeSnippet?: string
   }>({})
 
-  // 计算属性
   const hasMessages = computed(() => messages.value.length > 0)
   const lastMessage = computed(() =>
     messages.value.length > 0 ? messages.value[messages.value.length - 1] : null
   )
 
-  // 发送消息
   async function sendMessage(question: string) {
     if (!question.trim() || isLoading.value) return
 
-    // 添加用户消息
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       sessionId,
@@ -46,7 +39,6 @@ export function useChat(sessionId: string) {
     }
     messages.value.push(userMessage)
 
-    // 添加AI加载状态消息
     const loadingMessage: ChatMessage = {
       id: `assistant-${Date.now()}`,
       sessionId,
@@ -70,7 +62,6 @@ export function useChat(sessionId: string) {
         context: context.value.codeSnippet
       })
 
-      // 更新AI消息
       const aiIndex = messages.value.findIndex(m => m.id === loadingMessage.id)
       if (aiIndex >= 0) {
         messages.value[aiIndex] = {
@@ -82,10 +73,8 @@ export function useChat(sessionId: string) {
       }
     } catch (err) {
       error.value = (err as Error).message
-      // 移除加载消息
       messages.value = messages.value.filter(m => m.id !== loadingMessage.id)
 
-      // 添加错误消息
       messages.value.push({
         id: `error-${Date.now()}`,
         sessionId,
@@ -98,7 +87,6 @@ export function useChat(sessionId: string) {
     }
   }
 
-  // 加载历史消息
   async function loadHistory() {
     try {
       const history = await chatApi.getHistory(sessionId)
@@ -108,7 +96,6 @@ export function useChat(sessionId: string) {
     }
   }
 
-  // 清除对话
   async function clearMessages() {
     try {
       await chatApi.clearHistory(sessionId)
@@ -118,12 +105,10 @@ export function useChat(sessionId: string) {
     }
   }
 
-  // 设置上下文
   function setContext(ctx: typeof context.value) {
     context.value = { ...ctx }
   }
 
-  // 添加系统消息
   function addSystemMessage(content: string) {
     messages.value.push({
       id: `system-${Date.now()}`,
@@ -134,7 +119,6 @@ export function useChat(sessionId: string) {
     })
   }
 
-  // 获取推荐问题
   async function getSuggestions(commitId: number): Promise<string[]> {
     try {
       return await chatApi.getSuggestions(commitId)
@@ -143,7 +127,6 @@ export function useChat(sessionId: string) {
     }
   }
 
-  // 默认推荐问题
   function getDefaultSuggestions(): string[] {
     return [
       '这段代码的主要功能是什么？',
@@ -154,11 +137,9 @@ export function useChat(sessionId: string) {
     ]
   }
 
-  // 发送消息（流式输出）
   async function sendMessageStream(question: string) {
     if (!question.trim() || isLoading.value) return
 
-    // 添加用户消息
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       sessionId,
@@ -173,7 +154,6 @@ export function useChat(sessionId: string) {
     }
     messages.value.push(userMessage)
 
-    // 添加AI流式消息
     const streamMessageId = `assistant-stream-${Date.now()}`
     const streamMessage: ChatMessage = {
       id: streamMessageId,
@@ -198,7 +178,6 @@ export function useChat(sessionId: string) {
           question,
           context: context.value.codeSnippet
         },
-        // onChunk
         (chunk: string) => {
           const msgIndex = messages.value.findIndex(m => m.id === streamMessageId)
           if (msgIndex >= 0) {
@@ -218,7 +197,6 @@ export function useChat(sessionId: string) {
             }
           }
         },
-        // onComplete
         () => {
           const msgIndex = messages.value.findIndex(m => m.id === streamMessageId)
           if (msgIndex >= 0) {
@@ -239,7 +217,6 @@ export function useChat(sessionId: string) {
           }
           isLoading.value = false
         },
-        // onError
         (err: Error) => {
           error.value = err.message
           const msgIndex = messages.value.findIndex(m => m.id === streamMessageId)
@@ -269,7 +246,6 @@ export function useChat(sessionId: string) {
   }
 
   return {
-    // 状态
     messages,
     isLoading,
     error,
@@ -277,7 +253,6 @@ export function useChat(sessionId: string) {
     hasMessages,
     lastMessage,
 
-    // 方法
     sendMessage,
     sendMessageStream,
     loadHistory,
@@ -289,22 +264,18 @@ export function useChat(sessionId: string) {
   }
 }
 
-// 生成随机会话ID（仅用于临时场景）
 export function generateSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
-// 生成确定性会话ID（基于 repoId + filePath，确保同一文件使用相同的会话）
 export function generateDeterministicSessionId(repoId: number, filePath: string): string {
-  // 简单哈希函数
   const str = `${repoId}-${filePath}`
   let hash = 0
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i)
     hash = ((hash << 5) - hash) + char
-    hash = hash & hash // Convert to 32bit integer
+    hash = hash & hash
   }
-  // 转换为正数并返回
   const positiveHash = Math.abs(hash).toString(36)
   return `chat-${repoId}-${positiveHash}`
 }

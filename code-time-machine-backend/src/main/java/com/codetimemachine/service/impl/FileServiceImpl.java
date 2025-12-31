@@ -393,7 +393,6 @@ public class FileServiceImpl implements FileService {
                 .orderByAsc(CommitRecord::getCommitOrder);
         List<CommitRecord> commits = commitRecordMapper.selectList(crWrapper);
 
-        // 检测语言类型
         String language = detectLanguage(filePath);
         String previousContent = null;
 
@@ -403,18 +402,14 @@ public class FileServiceImpl implements FileService {
                 continue;
             }
 
-            // 首先检查方法是否存在（简单字符串匹配）
             boolean methodExists = fileContent.contains(methodName + "(") ||
                     fileContent.contains(methodName + " (");
 
             if (methodExists) {
-                // 尝试提取方法代码
                 String methodContent = extractMethodContent(fileContent, methodName, language);
 
-                // 如果提取失败，回退到完整文件
                 String contentToUse = (methodContent != null) ? methodContent : fileContent;
 
-                // 只有当内容与上一版本不同时才添加到时间线
                 if (previousContent == null || !contentToUse.equals(previousContent)) {
                     Map<String, Object> entry = new HashMap<>();
                     entry.put("commitId", commit.getId());
@@ -426,7 +421,7 @@ public class FileServiceImpl implements FileService {
                     entry.put("additions", commit.getAdditions());
                     entry.put("deletions", commit.getDeletions());
                     entry.put("content", contentToUse);
-                    entry.put("extracted", methodContent != null); // 标记是否成功提取
+                    entry.put("extracted", methodContent != null);
 
                     timeline.add(entry);
                 }
@@ -437,9 +432,6 @@ public class FileServiceImpl implements FileService {
         return timeline;
     }
 
-    /**
-     * 从文件内容中提取指定方法的代码
-     */
     private String extractMethodContent(String fileContent, String methodName, String language) {
         String[] lines = fileContent.split("\n");
         int startLine = -1;
@@ -452,11 +444,9 @@ public class FileServiceImpl implements FileService {
             if (line == null)
                 continue;
 
-            // 匹配方法定义
             if (!foundStart && (line.contains(methodName + "(") ||
                     line.contains(methodName + " (") ||
                     line.matches(".*\\b" + methodName + "\\s*\\(.*"))) {
-                // 检查是否是方法定义（不是调用）
                 String trimmed = line.trim();
                 boolean isDefinition = false;
 
@@ -469,8 +459,6 @@ public class FileServiceImpl implements FileService {
                     case "typescript":
                     case "javascript":
                     case "jsx":
-                        // TS/JS: function name(), async function name(), name() {, async name() {, name
-                        // = () =>
                         isDefinition = trimmed.startsWith("function ") ||
                                 trimmed.startsWith("async function ") ||
                                 trimmed.startsWith("async ") ||
@@ -498,7 +486,6 @@ public class FileServiceImpl implements FileService {
             }
 
             if (foundStart) {
-                // Python 使用缩进
                 if ("python".equals(language)) {
                     if (i > startLine) {
                         String trimmed = line.trim();
@@ -512,7 +499,6 @@ public class FileServiceImpl implements FileService {
                         }
                     }
                 } else {
-                    // 大括号语言
                     for (char c : line.toCharArray()) {
                         if (c == '{')
                             braceCount++;
@@ -528,7 +514,6 @@ public class FileServiceImpl implements FileService {
             }
         }
 
-        // Python 文件末尾情况
         if ("python".equals(language) && foundStart && endLine < 0) {
             endLine = lines.length - 1;
         }
@@ -568,7 +553,6 @@ public class FileServiceImpl implements FileService {
             return Collections.emptyMap();
         }
 
-        // 批量查询 commit 信息
         LambdaQueryWrapper<CommitRecord> wrapper = new LambdaQueryWrapper<>();
         wrapper.in(CommitRecord::getId, commitIds);
         List<CommitRecord> commits = commitRecordMapper.selectList(wrapper);
@@ -579,7 +563,6 @@ public class FileServiceImpl implements FileService {
         String localPath = repo.getLocalPath();
         String language = detectLanguage(filePath);
 
-        // 使用 CompletableFuture 并行处理
         List<CompletableFuture<Map.Entry<Long, Map<String, Object>>>> futures = commitIds.stream()
                 .filter(commitMap::containsKey)
                 .map(commitId -> CompletableFuture.supplyAsync(() -> {
@@ -595,7 +578,6 @@ public class FileServiceImpl implements FileService {
                 }, taskExecutor))
                 .collect(Collectors.toList());
 
-        // 等待所有任务完成并收集结果
         return futures.stream()
                 .map(CompletableFuture::join)
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));

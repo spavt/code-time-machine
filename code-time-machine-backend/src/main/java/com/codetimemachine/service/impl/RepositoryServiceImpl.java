@@ -63,46 +63,39 @@ public class RepositoryServiceImpl implements RepositoryService {
     @Override
     @Transactional
     public Repository analyzeByUrl(String url) {
-        // 使用默认配置
         return analyzeByUrl(url, AnalyzeOptionsDTO.recommended());
     }
 
     @Override
     @Transactional
     public Repository analyzeByUrl(String url, AnalyzeOptionsDTO options) {
-        // 检查是否已存在
         LambdaQueryWrapper<Repository> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Repository::getUrl, url);
         Repository existing = repositoryMapper.selectOne(wrapper);
 
         if (existing != null) {
-            // 如果正在分析中，直接返回
             if (existing.getStatus() == 1) {
                 return existing;
             }
-            // 如果已完成，也直接返回
             if (existing.getStatus() == 2) {
                 return existing;
             }
         }
 
-        // 创建新仓库记录
         Repository repo = new Repository();
         repo.setUrl(url);
         repo.setName(extractRepoName(url));
-        repo.setStatus(1); // 分析中
+        repo.setStatus(1);
         repo.setAnalyzeProgress(0);
         repo.setCreatedAt(LocalDateTime.now());
         repo.setUpdatedAt(LocalDateTime.now());
 
-        // 保存分析配置
         repo.setAnalyzeDepth(options.getDepth());
         repo.setAnalyzeSince(options.getSince());
         if (options.getPathFilters() != null && !options.getPathFilters().isEmpty()) {
             repo.setAnalyzePathFilters(JSON.toJSONString(options.getPathFilters()));
         }
 
-        // 生成本地路径
         String localPath = repoStoragePath + File.separator + UUID.randomUUID().toString();
         repo.setLocalPath(localPath);
 
@@ -113,7 +106,6 @@ public class RepositoryServiceImpl implements RepositoryService {
             repositoryMapper.insert(repo);
         }
 
-        // 异步执行分析（传递选项）
         repositoryAnalyzeService.analyzeAsync(repo, options);
 
         return repo;
@@ -124,24 +116,20 @@ public class RepositoryServiceImpl implements RepositoryService {
     public Repository fetchMoreHistory(Long repoId, int additionalDepth) {
         Repository repo = getById(repoId);
 
-        // 调用 Git 服务获取更多历史
         boolean success = gitService.fetchMoreHistory(repo.getLocalPath(), additionalDepth);
         if (!success) {
             throw new BusinessException("获取更多历史失败");
         }
 
-        // 更新仓库信息
         Repository info = gitService.parseRepositoryInfo(repo.getLocalPath());
         repo.setTotalCommits(info.getTotalCommits());
 
-        // 更新分析深度
         int currentDepth = repo.getAnalyzeDepth() != null ? repo.getAnalyzeDepth() : 500;
         repo.setAnalyzeDepth(currentDepth + additionalDepth);
 
         repo.setUpdatedAt(LocalDateTime.now());
         repositoryMapper.updateById(repo);
 
-        // 设置可以继续加载更多
         repo.setCanLoadMore(info.getTotalCommits() > repo.getAnalyzeDepth());
 
         return repo;
@@ -168,12 +156,10 @@ public class RepositoryServiceImpl implements RepositoryService {
         RepoOverviewDTO dto = new RepoOverviewDTO();
         dto.setTotalCommits(repo.getTotalCommits());
 
-        // 获取贡献者统计
         List<Map<String, Object>> contributors = commitRecordMapper.getContributorStats(repoId, 10);
         dto.setTopContributors(contributors);
         dto.setTotalAuthors(contributors.size());
 
-        // 计算总行数
         long totalAdditions = 0, totalDeletions = 0;
         for (Map<String, Object> c : contributors) {
             totalAdditions += ((Number) c.getOrDefault("additions", 0)).longValue();
@@ -182,7 +168,6 @@ public class RepositoryServiceImpl implements RepositoryService {
         dto.setTotalAdditions(totalAdditions);
         dto.setTotalDeletions(totalDeletions);
 
-        // 获取首次和最后提交时间
         LambdaQueryWrapper<CommitRecord> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(CommitRecord::getRepoId, repoId)
                 .orderByAsc(CommitRecord::getCommitOrder)
@@ -209,7 +194,6 @@ public class RepositoryServiceImpl implements RepositoryService {
     public void delete(Long id) {
         Repository repo = getById(id);
 
-        // 删除相关数据
         LambdaQueryWrapper<FileChange> fcWrapper = new LambdaQueryWrapper<>();
         fcWrapper.eq(FileChange::getRepoId, id);
         fileChangeMapper.delete(fcWrapper);
@@ -218,18 +202,14 @@ public class RepositoryServiceImpl implements RepositoryService {
         crWrapper.eq(CommitRecord::getRepoId, id);
         commitRecordMapper.delete(crWrapper);
 
-        // 删除仓库记录
         repositoryMapper.deleteById(id);
 
-        // 删除本地文件
         if (repo.getLocalPath() != null) {
             gitService.deleteLocalRepository(repo.getLocalPath());
         }
     }
 
     private String extractRepoName(String url) {
-        // 从URL提取仓库名
-        // https://github.com/owner/repo.git -> repo
         String name = url;
         if (name.endsWith(".git")) {
             name = name.substring(0, name.length() - 4);

@@ -4,9 +4,6 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 仓库概览DTO
- */
 @Data
 public class RepoOverviewDTO {
     private Integer totalCommits;

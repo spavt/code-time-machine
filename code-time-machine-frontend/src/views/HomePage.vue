@@ -33,7 +33,7 @@ function goToRepo(id: number) {
 }
 
 async function deleteRepo(repo: Repository, event: Event) {
-  event.stopPropagation() // 阻止卡片点击事件
+  event.stopPropagation()
   
   try {
     await ElMessageBox.confirm(
@@ -49,7 +49,6 @@ async function deleteRepo(repo: Repository, event: Event) {
     await repositoryApi.delete(repo.id)
     ElMessage.success('仓库已删除')
     
-    // 刷新列表
     await repoStore.fetchRepositories()
     recentRepos.value = repoStore.repositories.slice(0, 6)
   } catch (error) {
@@ -62,7 +61,6 @@ async function deleteRepo(repo: Repository, event: Event) {
 
 <template>
   <div class="home-page">
-    <!-- Navbar -->
     <nav class="navbar glass-panel">
       <div class="nav-content">
         <div class="brand">
@@ -90,7 +88,6 @@ async function deleteRepo(repo: Repository, event: Event) {
       </div>
     </nav>
 
-    <!-- Hero Section -->
     <section class="hero-section">
       <div class="hero-content">
         <div class="badge-pill">
@@ -119,13 +116,10 @@ async function deleteRepo(repo: Repository, event: Event) {
       </div>
     </section>
 
-    <!-- Product Preview (Linear-style embedded) -->
     <section class="product-preview-section">
       <div class="product-preview-container">
         <div class="product-preview-wrapper">
-          <!-- 模拟的播放器界面 -->
           <div class="mock-player">
-            <!-- 顶部控制栏 -->
             <div class="mock-header">
               <div class="mock-header-left">
                 <div class="mock-btn mock-btn-back">←</div>
@@ -140,9 +134,7 @@ async function deleteRepo(repo: Repository, event: Event) {
               </div>
             </div>
 
-            <!-- 主体区域 -->
             <div class="mock-body">
-              <!-- 左侧时间线 -->
               <div class="mock-timeline">
                 <div class="mock-timeline-header">时间轴</div>
                 <div class="mock-timeline-list">
@@ -156,7 +148,6 @@ async function deleteRepo(repo: Repository, event: Event) {
                 </div>
               </div>
 
-              <!-- 中间代码区 -->
               <div class="mock-code-area">
                 <div class="mock-code-header">
                   <span>代码变更</span>
@@ -178,7 +169,6 @@ async function deleteRepo(repo: Repository, event: Event) {
                 </div>
               </div>
 
-              <!-- 右侧 AI 面板 -->
               <div class="mock-ai-panel">
                 <div class="mock-ai-header">
                   <span class="mock-ai-icon">🤖</span>
@@ -201,7 +191,6 @@ async function deleteRepo(repo: Repository, event: Event) {
               </div>
             </div>
 
-            <!-- 底部播放控制 -->
             <div class="mock-controls">
               <div class="mock-play-btn">▶</div>
               <div class="mock-progress">
@@ -214,12 +203,10 @@ async function deleteRepo(repo: Repository, event: Event) {
             </div>
           </div>
         </div>
-        <!-- 底部渐变遮罩 -->
         <div class="product-preview-fade"></div>
       </div>
     </section>
 
-    <!-- Features Grid -->
     <section class="features-section">
       <div class="feature-grid">
         <div class="feature-box glass-panel">
@@ -248,7 +235,6 @@ async function deleteRepo(repo: Repository, event: Event) {
       </div>
     </section>
 
-    <!-- Projects Section -->
     <section class="projects-section" v-if="recentRepos.length > 0">
       <div class="section-head">
         <h2>最近项目</h2>
@@ -300,7 +286,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   padding-bottom: 100px;
 }
 
-/* Navbar */
 .navbar {
   position: fixed;
   top: 20px;
@@ -379,7 +364,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   color: var(--text-primary);
 }
 
-/* Hero */
 .hero-section {
   text-align: center;
   padding: 100px 20px 80px;
@@ -453,7 +437,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   background: var(--bg-glass-hover);
 }
 
-/* Features */
 .features-section {
   padding: 40px 20px;
 }
@@ -511,7 +494,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   font-size: 0.95rem;
 }
 
-/* Projects */
 .projects-section {
   padding: 80px 20px;
 }
@@ -623,7 +605,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   .mock-timeline { display: none; }
 }
 
-/* ========== Product Preview Section (Linear-style) ========== */
 .product-preview-section {
   position: relative;
   padding: 0 20px 40px;
@@ -665,7 +646,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   z-index: 10;
 }
 
-/* ========== Mock Player Styles ========== */
 .mock-player {
   background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -674,7 +654,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   font-size: 13px;
 }
 
-/* Mock Header */
 .mock-header {
   display: flex;
   justify-content: space-between;
@@ -727,14 +706,12 @@ async function deleteRepo(repo: Repository, event: Event) {
   text-transform: uppercase;
 }
 
-/* Mock Body */
 .mock-body {
   display: grid;
   grid-template-columns: 200px 1fr 260px;
   min-height: 320px;
 }
 
-/* Mock Timeline */
 .mock-timeline {
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   padding: 12px;
@@ -807,7 +784,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   color: #6e7681;
 }
 
-/* Mock Code Area */
 .mock-code-area {
   display: flex;
   flex-direction: column;
@@ -880,7 +856,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   white-space: pre;
 }
 
-/* Mock AI Panel */
 .mock-ai-panel {
   border-left: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
@@ -940,7 +915,6 @@ async function deleteRepo(repo: Repository, event: Event) {
   font-size: 11px;
 }
 
-/* Mock Controls */
 .mock-controls {
   display: flex;
   align-items: center;

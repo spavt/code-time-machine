@@ -84,7 +84,6 @@ public class CommitServiceImpl implements CommitService {
 
     @Override
     public AiAnalysis triggerAnalysis(Long commitId) {
-        // 检查是否已有分析
         AiAnalysis existing = getAiAnalysis(commitId);
         if (existing != null) {
             return existing;
@@ -93,7 +92,6 @@ public class CommitServiceImpl implements CommitService {
         CommitRecord commit = getById(commitId);
         List<FileChange> changes = getFileChanges(commitId);
 
-        // 构建diff摘要
         StringBuilder diffSummary = new StringBuilder();
         for (FileChange change : changes) {
             diffSummary.append(String.format("%s: %s (+%d/-%d)\n",
@@ -108,7 +106,6 @@ public class CommitServiceImpl implements CommitService {
             }
         }
 
-        // 调用AI分析
         AiAnalysis analysis = aiService.analyzeCommit(commit, diffSummary.toString());
         analysis.setCommitId(commitId);
         analysis.setRepoId(commit.getRepoId());
@@ -122,29 +119,24 @@ public class CommitServiceImpl implements CommitService {
     @Override
     public CommitStatsDTO getStats(Long commitId) {
 
-        // 先检查数据库中是否已有统计
         CommitRecord commit = getById(commitId);
 
         if (commit.getAdditions() != null && commit.getDeletions() != null) {
-            // 已有统计，直接返回
             return CommitStatsDTO.of(
                     commit.getAdditions(),
                     commit.getDeletions(),
                     commit.getFilesChanged() != null ? commit.getFilesChanged() : 0);
         }
 
-        // 需要计算统计
         Repository repo = repositoryMapper.selectById(commit.getRepoId());
         if (repo == null || repo.getLocalPath() == null) {
             log.warn("仓库不存在或本地路径为空: {}", commit.getRepoId());
             return CommitStatsDTO.empty();
         }
 
-        // 计算统计
         CommitStatsDTO stats = gitService.calculateCommitStats(repo.getLocalPath(), commit.getCommitHash());
 
         if (stats.getCalculated()) {
-            // 缓存到数据库
             commit.setAdditions(stats.getAdditions());
             commit.setDeletions(stats.getDeletions());
             commit.setFilesChanged(stats.getFilesChanged());

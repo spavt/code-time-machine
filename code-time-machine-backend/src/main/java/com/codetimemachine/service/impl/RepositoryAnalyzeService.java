@@ -182,7 +182,6 @@ public class RepositoryAnalyzeService {
             return;
         }
 
-        // 性能优化：一次性获取所有 commit 的文件变更
         List<String> commitHashes = commits.stream()
                 .map(CommitRecord::getCommitHash)
                 .filter(Objects::nonNull)

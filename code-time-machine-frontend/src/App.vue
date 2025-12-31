@@ -1,6 +1,4 @@
 <script setup lang="ts">
-// AI Code Time Machine - Main App
-// Modern Premium Design
 </script>
 
 <template>
@@ -65,7 +63,6 @@
   100% { transform: scale(1.1); opacity: 0.2; }
 }
 
-/* Page Transitions */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease;

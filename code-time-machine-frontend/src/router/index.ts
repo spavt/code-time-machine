@@ -1,6 +1,3 @@
-// =====================================================
-// AI代码时光机 - 路由配置
-// =====================================================
 
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
@@ -103,9 +100,7 @@ const router = createRouter({
   }
 })
 
-// 路由守卫
 router.beforeEach((to, _from, next) => {
-  // 设置页面标题
   document.title = `${to.meta.title || 'AI代码时光机'} - Code Time Machine`
   next()
 })

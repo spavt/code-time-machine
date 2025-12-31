@@ -44,7 +44,6 @@ async function loadStats() {
     fileTypes.value = types
     changeTypes.value = changes
     
-    // 加载热力图数据
     try {
       const [activity, files] = await Promise.all([
         statsApi.getActivityHeatmap(repoId.value),
@@ -125,7 +124,6 @@ const changeTypesOption = computed(() => ({
   ]
 }))
 
-// 活跃时间热力图配置
 const activityHeatmapOption = computed(() => {
   const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`)
   const data = hours.map((_, i) => [i, 0, activityHeatmap.value.byHour[i] || 0])
@@ -176,12 +174,10 @@ const activityHeatmapOption = computed(() => {
         <v-chart :option="changeTypesOption" class="chart" autoresize />
       </div>
 
-      <!-- 活跃时间热力图 -->
       <div class="chart-card chart-card--wide">
         <v-chart :option="activityHeatmapOption" class="chart" autoresize />
       </div>
       
-      <!-- 文件热力图 -->
       <div class="chart-card chart-card--wide" v-if="fileHeatmap.length > 0">
         <h3>
           <el-icon><Document /></el-icon>
@@ -338,7 +334,6 @@ const activityHeatmapOption = computed(() => {
   }
 }
 
-/* 文件热力图样式 */
 .file-heatmap {
   display: flex;
   flex-wrap: wrap;
@@ -374,7 +369,6 @@ const activityHeatmapOption = computed(() => {
   margin-left: var(--spacing-sm);
 }
 
-/* 热度等级颜色 */
 .heat-level-1 {
   background: rgba(0, 255, 136, 0.1);
   border: 1px solid rgba(0, 255, 136, 0.2);

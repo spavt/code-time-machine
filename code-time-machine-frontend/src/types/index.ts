@@ -1,8 +1,4 @@
-// =====================================================
-// AI代码时光机 - TypeScript类型定义
-// =====================================================
 
-// 仓库信息
 export interface Repository {
   id: number
   name: string
@@ -17,16 +13,16 @@ export interface Repository {
   repoSize: number
   status: RepoStatus
   analyzeProgress: number
-  analyzeDepth?: number         // 分析深度
-  analyzeSince?: string         // 分析起始时间
-  analyzePathFilters?: string   // 路径过滤（JSON）
-  canLoadMore?: boolean         // 是否可以加载更多历史
+  analyzeDepth?: number
+  analyzeSince?: string
+  analyzePathFilters?: string
+  canLoadMore?: boolean
   lastAnalyzedAt?: string
   createdAt: string
   updatedAt: string
 }
 
-export type RepoStatus = 0 | 1 | 2 | 3 // 待分析 | 分析中 | 完成 | 失败
+export type RepoStatus = 0 | 1 | 2 | 3
 
 export const RepoStatusMap: Record<RepoStatus, { label: string; color: string }> = {
   0: { label: '待分析', color: 'info' },
@@ -35,16 +31,14 @@ export const RepoStatusMap: Record<RepoStatus, { label: string; color: string }>
   3: { label: '失败', color: 'danger' }
 }
 
-// 分析选项
 export interface AnalyzeOptions {
-  depth?: number           // 分析深度: 20(极速), 100(快速), 500(推荐), 2000(深度), -1(全部)
-  since?: string           // ISO日期字符串，只分析此时间之后的提交
-  until?: string           // ISO日期字符串，只分析此时间之前的提交
-  pathFilters?: string[]   // 路径过滤器
-  shallow?: boolean        // 是否使用浅克隆
+  depth?: number
+  since?: string
+  until?: string
+  pathFilters?: string[]
+  shallow?: boolean
 }
 
-// 深度选项预设
 export const DepthPresets = [
   { value: 20, label: '极速 (20次提交)', desc: '超快速预览', time: '~10秒' },
   { value: 100, label: '快速 (100次提交)', desc: '适合快速浏览', time: '~1分钟' },
@@ -54,7 +48,6 @@ export const DepthPresets = [
   { value: 0, label: '自定义', desc: '输入任意次数', time: '取决于数量' }
 ]
 
-// 提交记录
 export interface CommitRecord {
   id: number
   repoId: number
@@ -71,12 +64,10 @@ export interface CommitRecord {
   isMerge: boolean
   commitOrder: number
   createdAt: string
-  // 关联数据
   fileChanges?: FileChange[]
   aiAnalysis?: AiAnalysis
 }
 
-// 文件变更
 export interface FileChange {
   id: number
   commitId: number
@@ -103,7 +94,6 @@ export const ChangeTypeMap: Record<ChangeType, { label: string; color: string; i
   'COPY': { label: '复制', color: '#409EFF', icon: 'CopyDocument' }
 }
 
-// 文件快照
 export interface FileSnapshot {
   id: number
   repoId: number
@@ -115,7 +105,6 @@ export interface FileSnapshot {
   language?: string
 }
 
-// AI分析结果
 export interface AiAnalysis {
   id: number
   commitId: number
@@ -149,14 +138,13 @@ export const ChangeCategoryMap: Record<ChangeCategory, { label: string; color: s
   'perf': { label: '性能', color: '#F59E0B', icon: 'TrendCharts' }
 }
 
-// 对话历史
 export interface ChatMessage {
   id: string
   sessionId: string
   repoId?: number
   commitId?: number
-  commitOrder?: number     // 提交序号（第几帧）
-  shortHash?: string       // 提交短哈希
+  commitOrder?: number
+  shortHash?: string
   filePath?: string
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -165,7 +153,6 @@ export interface ChatMessage {
   isLoading?: boolean
 }
 
-// 统计数据
 export interface Statistics {
   id: number
   repoId: number
@@ -176,7 +163,6 @@ export interface Statistics {
   extraData?: Record<string, unknown>
 }
 
-// 文件演化时间线
 export interface FileTimeline {
   repoId: number
   filePath: string
@@ -201,7 +187,6 @@ export interface TimelineCommit {
   diffLines?: DiffLine[]
 }
 
-// Diff行信息
 export interface DiffLine {
   lineNumber: number
   oldLineNumber?: number
@@ -210,7 +195,6 @@ export interface DiffLine {
   content: string
 }
 
-// 播放器状态
 export interface PlayerState {
   isPlaying: boolean
   currentIndex: number
@@ -218,7 +202,6 @@ export interface PlayerState {
   totalFrames: number
 }
 
-// API响应格式
 export interface ApiResponse<T> {
   code: number
   message: string
@@ -232,7 +215,6 @@ export interface PageResult<T> {
   pageSize: number
 }
 
-// 图表数据
 export interface ChartData {
   labels: string[]
   datasets: {
@@ -242,7 +224,6 @@ export interface ChartData {
   }[]
 }
 
-// 贡献者统计
 export interface ContributorStats {
   authorName: string
   authorEmail?: string
@@ -253,7 +234,6 @@ export interface ContributorStats {
   lastCommit: string
 }
 
-// 文件树节点
 export interface FileTreeNode {
   id: string
   label: string
@@ -265,7 +245,6 @@ export interface FileTreeNode {
   commitCount?: number
 }
 
-// 搜索过滤器
 export interface SearchFilter {
   keyword?: string
   authorName?: string

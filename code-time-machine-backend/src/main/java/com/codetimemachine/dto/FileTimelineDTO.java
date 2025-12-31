@@ -3,9 +3,6 @@ package com.codetimemachine.dto;
 import lombok.Data;
 import java.util.List;
 
-/**
- * 文件时间线DTO
- */
 @Data
 public class FileTimelineDTO {
     private Long repoId;

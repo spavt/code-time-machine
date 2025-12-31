@@ -80,7 +80,6 @@ function formatTime(dateStr: string) {
 
 <template>
   <div class="commits-tab">
-    <!-- 搜索和过滤 -->
     <div class="filter-bar">
       <el-input
         v-model="searchKeyword"
@@ -107,7 +106,6 @@ function formatTime(dateStr: string) {
       </div>
     </div>
 
-    <!-- 提交列表 -->
     <div class="commits-list">
       <div 
         v-for="commit in paginatedCommits" 
@@ -149,10 +147,8 @@ function formatTime(dateStr: string) {
           </div>
         </div>
 
-        <!-- 展开详情 -->
         <transition name="slide">
           <div v-if="selectedCommit === commit.id" class="commit-details">
-            <!-- AI分析 -->
             <div class="analysis-section" v-if="repoStore.currentAnalysis">
               <h4><el-icon><MagicStick /></el-icon> AI分析</h4>
               <div class="analysis-content">
@@ -168,7 +164,6 @@ function formatTime(dateStr: string) {
               </div>
             </div>
 
-            <!-- 文件变更 -->
             <div class="files-section" v-if="repoStore.fileChanges.length > 0">
               <h4><el-icon><Folder /></el-icon> 变更文件</h4>
               <div class="files-list">
@@ -192,7 +187,6 @@ function formatTime(dateStr: string) {
       </div>
     </div>
 
-    <!-- 分页 -->
     <div class="pagination" v-if="totalPages > 1">
       <el-pagination
         v-model:current-page="currentPage"

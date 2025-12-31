@@ -22,9 +22,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-/**
- * AI对话接口
- */
 @RestController
 @RequestMapping("/api/ai")
 @RequiredArgsConstructor
@@ -36,9 +33,6 @@ public class AiController {
     private final RepositoryMapper repositoryMapper;
     private final FileChangeMapper fileChangeMapper;
 
-    /**
-     * 问答请求
-     */
     @Data
     public static class AskRequest {
         private String sessionId;
@@ -49,12 +43,8 @@ public class AiController {
         private String context;
     }
 
-    /**
-     * 发送问题
-     */
     @PostMapping("/ask")
     public Result<Map<String, Object>> ask(@RequestBody AskRequest request) {
-        // 保存用户问题
         ChatHistory userMsg = new ChatHistory();
         userMsg.setSessionId(request.getSessionId());
         userMsg.setRepoId(request.getRepoId());
@@ -65,10 +55,8 @@ public class AiController {
         userMsg.setCreatedAt(LocalDateTime.now());
         chatHistoryMapper.insert(userMsg);
 
-        // 调用AI
         String answer = aiService.askQuestion(request.getQuestion(), request.getContext());
 
-        // 保存AI回答
         ChatHistory aiMsg = new ChatHistory();
         aiMsg.setSessionId(request.getSessionId());
         aiMsg.setRepoId(request.getRepoId());
@@ -79,7 +67,6 @@ public class AiController {
         aiMsg.setCreatedAt(LocalDateTime.now());
         chatHistoryMapper.insert(aiMsg);
 
-        // 估算 Token 使用量（问题 + 上下文 + 回答）
         int tokensUsed = estimateTokens(request.getQuestion())
                 + estimateTokens(request.getContext())
                 + estimateTokens(answer);
@@ -89,12 +76,8 @@ public class AiController {
                 "tokensUsed", tokensUsed));
     }
 
-    /**
-     * 发送问题（流式输出）
-     */
     @PostMapping(value = "/ask/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<String> askStream(@RequestBody AskRequest request) {
-        // 保存用户问题
         ChatHistory userMsg = new ChatHistory();
         userMsg.setSessionId(request.getSessionId());
         userMsg.setRepoId(request.getRepoId());
@@ -105,14 +88,11 @@ public class AiController {
         userMsg.setCreatedAt(LocalDateTime.now());
         chatHistoryMapper.insert(userMsg);
 
-        // 用于收集完整回答
         StringBuilder fullAnswer = new StringBuilder();
 
-        // 调用AI流式输出
         return aiService.askQuestionStream(request.getQuestion(), request.getContext())
                 .doOnNext(chunk -> fullAnswer.append(chunk))
                 .doOnComplete(() -> {
-                    // 流结束后保存完整的AI回答
                     ChatHistory aiMsg = new ChatHistory();
                     aiMsg.setSessionId(request.getSessionId());
                     aiMsg.setRepoId(request.getRepoId());
@@ -125,10 +105,6 @@ public class AiController {
                 });
     }
 
-    /**
-     * 估算文本的 Token 数量
-     * 中文约 1.5 字符/token，英文约 4 字符/token
-     */
     private int estimateTokens(String text) {
         if (text == null || text.isEmpty())
             return 0;
@@ -144,13 +120,9 @@ public class AiController {
             }
         }
 
-        // 中文：约 1.5 字符/token，其他：约 4 字符/token
         return (int) Math.ceil(chineseCount / 1.5) + (int) Math.ceil(otherCount / 4.0);
     }
 
-    /**
-     * 获取对话历史
-     */
     @GetMapping("/history/{sessionId}")
     public Result<List<ChatHistory>> getHistory(@PathVariable String sessionId) {
         LambdaQueryWrapper<ChatHistory> wrapper = new LambdaQueryWrapper<>();
@@ -159,9 +131,6 @@ public class AiController {
         return Result.success(chatHistoryMapper.selectList(wrapper));
     }
 
-    /**
-     * 清除对话历史
-     */
     @DeleteMapping("/history/{sessionId}")
     public Result<Void> clearHistory(@PathVariable String sessionId) {
         LambdaQueryWrapper<ChatHistory> wrapper = new LambdaQueryWrapper<>();
@@ -170,19 +139,14 @@ public class AiController {
         return Result.success();
     }
 
-    /**
-     * 获取推荐问题 - 根据提交内容智能生成
-     */
     @GetMapping("/suggestions/{commitId}")
     public Result<List<String>> getSuggestions(@PathVariable Long commitId) {
         List<String> suggestions = new ArrayList<>();
 
-        // 获取 commit 信息
         CommitRecord commit = commitRecordMapper.selectById(commitId);
         String commitMessage = commit != null ? commit.getCommitMessage() : "";
         String lowerMessage = commitMessage.toLowerCase();
 
-        // 根据 commit message 判断提交类型并生成对应问题
         CommitType type = detectCommitType(lowerMessage);
 
         switch (type) {
@@ -230,58 +194,44 @@ public class AiController {
                 suggestions.add("有没有潜在的性能问题？");
         }
 
-        // 添加通用问题
         suggestions.add("这个改动有什么需要注意的地方吗？");
 
         return Result.success(suggestions);
     }
 
-    /**
-     * 提交类型枚举
-     */
     private enum CommitType {
         BUG_FIX, NEW_FEATURE, REFACTOR, DOCS, TEST, PERFORMANCE, STYLE, OTHER
     }
 
-    /**
-     * 根据 commit message 检测提交类型
-     */
     private CommitType detectCommitType(String message) {
         if (message == null || message.isEmpty()) {
             return CommitType.OTHER;
         }
 
-        // Bug 修复关键词
         if (containsAny(message, "fix", "bug", "修复", "问题", "issue", "hotfix", "patch", "解决", "修正")) {
             return CommitType.BUG_FIX;
         }
 
-        // 新功能关键词
         if (containsAny(message, "feat", "feature", "add", "新增", "功能", "implement", "新加", "添加", "support")) {
             return CommitType.NEW_FEATURE;
         }
 
-        // 重构关键词
         if (containsAny(message, "refactor", "重构", "优化", "improve", "clean", "restructure", "整理", "改进")) {
             return CommitType.REFACTOR;
         }
 
-        // 文档关键词
         if (containsAny(message, "doc", "文档", "readme", "comment", "注释", "说明")) {
             return CommitType.DOCS;
         }
 
-        // 测试关键词
         if (containsAny(message, "test", "测试", "spec", "unit", "单元", "集成")) {
             return CommitType.TEST;
         }
 
-        // 性能关键词
         if (containsAny(message, "perf", "性能", "optimize", "加速", "speed", "fast", "cache", "缓存")) {
             return CommitType.PERFORMANCE;
         }
 
-        // 代码风格关键词
         if (containsAny(message, "style", "format", "格式", "lint", "风格", "indent", "空格")) {
             return CommitType.STYLE;
         }
@@ -289,9 +239,6 @@ public class AiController {
         return CommitType.OTHER;
     }
 
-    /**
-     * 检查字符串是否包含任意关键词
-     */
     private boolean containsAny(String text, String... keywords) {
         for (String keyword : keywords) {
             if (text.contains(keyword)) {
@@ -301,15 +248,10 @@ public class AiController {
         return false;
     }
 
-    /**
-     * 生成学习路径
-     */
     @GetMapping("/learning-path/{repoId}")
     public Result<Map<String, Object>> generateLearningPath(@PathVariable Long repoId) {
-        // 收集项目元数据
         String metadata = collectProjectMetadata(repoId);
 
-        // 调用 AI 生成学习路径
         String learningPath = aiService.generateLearningPath(metadata);
 
         return Result.success(Map.of(
@@ -317,13 +259,9 @@ public class AiController {
                 "metadata", metadata));
     }
 
-    /**
-     * 收集项目元数据用于 AI 分析
-     */
     private String collectProjectMetadata(Long repoId) {
         StringBuilder sb = new StringBuilder();
 
-        // 获取仓库信息
         com.codetimemachine.entity.Repository repo = repositoryMapper.selectById(repoId);
         if (repo != null) {
             sb.append("项目名: ").append(repo.getName()).append("\n");
@@ -333,7 +271,6 @@ public class AiController {
             sb.append("总文件数: ").append(repo.getTotalFiles()).append("\n\n");
         }
 
-        // 获取文件修改次数统计
         sb.append("文件列表（按修改次数排序，Top 20）:\n");
         sb.append("| 文件路径 | 修改次数 |\n");
         sb.append("|---------|----------|\n");
@@ -349,7 +286,6 @@ public class AiController {
                             .append(" |\n");
                 });
 
-        // 分析包结构
         sb.append("\n包/目录结构:\n");
         List<String> paths = fileChangeMapper.getDistinctFilePaths(repoId);
         paths.stream()

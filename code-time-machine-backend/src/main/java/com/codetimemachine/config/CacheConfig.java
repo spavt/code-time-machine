@@ -7,18 +7,9 @@ import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
 
-/**
- * 缓存配置 - 使用 Caffeine 高性能缓存
- */
 @Configuration
 public class CacheConfig {
 
-    /**
-     * 文件内容缓存
-     * - 最大 1000 条记录
-     * - 1 小时后过期
-     * - 记录统计信息
-     */
     @Bean
     public Cache<String, String> fileContentCache() {
         return Caffeine.newBuilder()
@@ -28,9 +19,6 @@ public class CacheConfig {
                 .build();
     }
 
-    /**
-     * 文件时间线缓存（用于 /file/timeline 接口）
-     */
     @Bean
     public Cache<String, Object> timelineCache() {
         return Caffeine.newBuilder()

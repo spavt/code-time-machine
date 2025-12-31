@@ -11,7 +11,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   const contentLoading = new Set<number>()
   const currentIndex = ref(0)
   const isPlaying = ref(false)
-  const playSpeed = ref(1000) // 毫秒
+  const playSpeed = ref(1000)
   const playTimer = ref<ReturnType<typeof setInterval> | null>(null)
   const showDiff = ref(true)
   const autoScroll = ref(true)
@@ -70,7 +70,6 @@ export const useTimelineStore = defineStore('timeline', () => {
       commits.value = data.commits || []
       currentIndex.value = 0
 
-      // 加载第一个提交的内容
       if (commits.value.length > 0) {
         await loadCommitContent(0)
       }
@@ -88,7 +87,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     if (index < 0 || index >= commits.value.length) return
 
     const commit = commits.value[index]
-    if (!commit) return // 类型守卫
+    if (!commit) return
     if (commit.content != null) return
     if (commit.changeType === 'DELETE') {
       commit.content = ''
@@ -114,7 +113,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   function play() {
     if (isPlaying.value) return
     if (currentIndex.value >= totalFrames.value - 1) {
-      currentIndex.value = 0 // 从头开始
+      currentIndex.value = 0
     }
 
     isPlaying.value = true
@@ -185,7 +184,6 @@ export const useTimelineStore = defineStore('timeline', () => {
   function setSpeed(speed: number) {
     playSpeed.value = speed
 
-    // 如果正在播放，需要重新设置定时器
     if (isPlaying.value) {
       pause()
       play()

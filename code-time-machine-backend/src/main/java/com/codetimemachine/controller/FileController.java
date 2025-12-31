@@ -12,9 +12,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 文件接口
- */
 @RestController
 @RequestMapping("/api/file")
 @RequiredArgsConstructor
@@ -23,17 +20,11 @@ public class FileController {
     private final FileService fileService;
     private final MethodParserService methodParserService;
 
-    /**
-     * 获取文件树
-     */
     @GetMapping("/tree/{repoId}")
     public Result<List<Map<String, Object>>> getFileTree(@PathVariable Long repoId) {
         return Result.success(fileService.getFileTree(repoId));
     }
 
-    /**
-     * 获取文件演化时间线
-     */
     @GetMapping("/timeline/{repoId}")
     public Result<FileTimelineDTO> getTimeline(
             @PathVariable Long repoId,
@@ -42,9 +33,6 @@ public class FileController {
         return Result.success(fileService.getTimeline(repoId, filePath, includeContent));
     }
 
-    /**
-     * 获取文件内容
-     */
     @GetMapping("/content")
     public Result<Map<String, Object>> getContent(
             @RequestParam Long repoId,
@@ -52,7 +40,6 @@ public class FileController {
             @RequestParam String filePath) {
         String content = fileService.getFileContent(repoId, commitId, filePath);
 
-        // 检测语言
         String language = detectLanguage(filePath);
         int lineCount = content != null ? content.split("\n").length : 0;
 
@@ -62,10 +49,6 @@ public class FileController {
                 "lineCount", lineCount));
     }
 
-    /**
-     * 批量获取文件内容（用于预加载优化）
-     * 使用并行处理，一次请求获取多个 commit 的文件内容
-     */
     @PostMapping("/content/batch")
     public Result<Map<Long, Map<String, Object>>> getBatchContent(
             @RequestBody BatchContentRequest request) {
@@ -75,10 +58,6 @@ public class FileController {
                 request.getFilePath()));
     }
 
-    /**
-     * 
-     * 搜索文件
-     */
     @GetMapping("/search/{repoId}")
     public Result<List<Map<String, Object>>> searchFiles(
             @PathVariable Long repoId,
@@ -86,9 +65,6 @@ public class FileController {
         return Result.success(fileService.searchFiles(repoId, keyword));
     }
 
-    /**
-     * 获取文件演进故事
-     */
     @GetMapping("/evolution-story/{repoId}")
     public Result<Map<String, Object>> getEvolutionStory(
             @PathVariable Long repoId,
@@ -96,9 +72,6 @@ public class FileController {
         return Result.success(fileService.getEvolutionStory(repoId, filePath));
     }
 
-    /**
-     * 获取文件在两个提交之间的diff
-     */
     @GetMapping("/diff/{repoId}")
     public Result<Map<String, Object>> getDiff(
             @PathVariable Long repoId,
@@ -109,29 +82,21 @@ public class FileController {
         return Result.success(Map.of("diff", diff != null ? diff : ""));
     }
 
-    /**
-     * 获取文件中的方法列表
-     */
     @GetMapping("/methods/{repoId}")
     public Result<List<MethodInfo>> getMethods(
             @PathVariable Long repoId,
             @RequestParam Long commitId,
             @RequestParam String filePath) {
-        // 获取文件内容
         String content = fileService.getFileContent(repoId, commitId, filePath);
         if (content == null) {
             return Result.success(List.of());
         }
 
-        // 检测语言并解析方法
         String language = detectLanguage(filePath);
         List<MethodInfo> methods = methodParserService.parseMethods(content, language);
         return Result.success(methods);
     }
 
-    /**
-     * 获取方法演化时间线
-     */
     @GetMapping("/method-timeline/{repoId}")
     public Result<List<Map<String, Object>>> getMethodTimeline(
             @PathVariable Long repoId,

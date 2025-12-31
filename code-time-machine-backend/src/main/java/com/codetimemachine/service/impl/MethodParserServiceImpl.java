@@ -15,58 +15,36 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * 方法解析服务实现
- * 支持多种语言：Java (使用 JavaParser), JavaScript/TypeScript, Python, Go, Rust, C/C++
- * (使用正则)
- */
 @Slf4j
 @Service
 public class MethodParserServiceImpl implements MethodParserService {
 
-    // JavaScript/TypeScript 函数匹配正则
     private static final Pattern JS_FUNCTION_PATTERN = Pattern.compile(
-            "(?:(?:export\\s+)?(?:async\\s+)?function\\s+(\\w+)|" + // function name()
-                    "(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:async\\s+)?(?:function|\\([^)]*\\)\\s*=>)|" + // const name
-                                                                                                          // =
-                                                                                                          // function/arrow
-                    "(\\w+)\\s*\\([^)]*\\)\\s*\\{)" // method shorthand in class
+            "(?:(?:export\\s+)?(?:async\\s+)?function\\s+(\\w+)|" +
+                    "(?:const|let|var)\\s+(\\w+)\\s*=\\s*(?:async\\s+)?(?:function|\\([^)]*\\)\\s*=>)|" +
+                    "(\\w+)\\s*\\([^)]*\\)\\s*\\{)"
     );
 
-    // TypeScript/JavaScript 方法匹配（类内部）
     private static final Pattern JS_METHOD_PATTERN = Pattern.compile(
             "(?:(?:public|private|protected|static|async)\\s+)*" +
                     "(\\w+)\\s*\\([^)]*\\)\\s*(?::\\s*[\\w<>\\[\\]|&\\s]+)?\\s*\\{");
 
-    // Python 函数匹配正则
-    // 匹配: def function_name(params):
-    // 支持: async def, 装饰器后的函数
     private static final Pattern PYTHON_FUNCTION_PATTERN = Pattern.compile(
             "^[ \\t]*(?:async\\s+)?def\\s+(\\w+)\\s*\\([^)]*\\)\\s*(?:->\\s*[^:]+)?\\s*:",
             Pattern.MULTILINE);
 
-    // Python 类方法匹配（带 self 参数）
     private static final Pattern PYTHON_METHOD_PATTERN = Pattern.compile(
             "^[ \\t]+(?:async\\s+)?def\\s+(\\w+)\\s*\\(\\s*(?:self|cls)[^)]*\\)\\s*(?:->\\s*[^:]+)?\\s*:",
             Pattern.MULTILINE);
 
-    // Go 函数匹配正则
-    // 匹配: func functionName(params) returnType {
-    // 匹配: func (receiver) methodName(params) returnType {
     private static final Pattern GO_FUNCTION_PATTERN = Pattern.compile(
             "^func\\s+(?:\\([^)]+\\)\\s+)?(\\w+)\\s*\\([^)]*\\)",
             Pattern.MULTILINE);
 
-    // Rust 函数匹配正则
-    // 匹配: fn function_name(params) -> ReturnType {
-    // 匹配: pub fn, async fn, pub async fn
     private static final Pattern RUST_FUNCTION_PATTERN = Pattern.compile(
             "^\\s*(?:pub\\s+)?(?:async\\s+)?fn\\s+(\\w+)\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)",
             Pattern.MULTILINE);
 
-    // C/C++ 函数匹配正则
-    // 匹配: returnType functionName(params) {
-    // 支持: static, inline, virtual 等修饰符
     private static final Pattern C_FUNCTION_PATTERN = Pattern.compile(
             "^[\\w\\s*&]+\\s+(\\w+)\\s*\\([^)]*\\)\\s*(?:const)?\\s*\\{",
             Pattern.MULTILINE);
@@ -96,7 +74,6 @@ public class MethodParserServiceImpl implements MethodParserService {
         List<MethodInfo> methods = parseMethods(code, language);
 
         for (MethodInfo method : methods) {
-            // 匹配方法签名
             if (method.getSignature().contains(methodSignature) ||
                     method.getName().equals(methodSignature)) {
                 return method.getContent();
@@ -106,9 +83,6 @@ public class MethodParserServiceImpl implements MethodParserService {
         return null;
     }
 
-    /**
-     * 使用 JavaParser 解析 Java 代码
-     */
     private List<MethodInfo> parseJavaMethods(String code) {
         List<MethodInfo> methods = new ArrayList<>();
 
@@ -118,11 +92,9 @@ public class MethodParserServiceImpl implements MethodParserService {
             if (parseResult.isSuccessful() && parseResult.getResult().isPresent()) {
                 CompilationUnit cu = parseResult.getResult().get();
 
-                // 遍历所有类
                 cu.findAll(ClassOrInterfaceDeclaration.class).forEach(classDecl -> {
                     String className = classDecl.getNameAsString();
 
-                    // 遍历所有方法
                     classDecl.findAll(MethodDeclaration.class).forEach(methodDecl -> {
                         MethodInfo info = new MethodInfo();
                         info.setName(methodDecl.getNameAsString());
@@ -130,7 +102,6 @@ public class MethodParserServiceImpl implements MethodParserService {
                         info.setClassName(className);
                         info.setParameterCount(methodDecl.getParameters().size());
 
-                        // 获取行号
                         if (methodDecl.getBegin().isPresent()) {
                             info.setStartLine(methodDecl.getBegin().get().line);
                         }
@@ -138,7 +109,6 @@ public class MethodParserServiceImpl implements MethodParserService {
                             info.setEndLine(methodDecl.getEnd().get().line);
                         }
 
-                        // 获取方法体代码
                         info.setContent(methodDecl.toString());
 
                         methods.add(info);
@@ -156,28 +126,18 @@ public class MethodParserServiceImpl implements MethodParserService {
         return methods;
     }
 
-    /**
-     * 使用正则解析 JavaScript 方法
-     */
     private List<MethodInfo> parseJavaScriptMethods(String code) {
         return parseWithRegex(code, JS_FUNCTION_PATTERN, JS_METHOD_PATTERN);
     }
 
-    /**
-     * 使用正则解析 TypeScript 方法
-     */
     private List<MethodInfo> parseTypeScriptMethods(String code) {
         return parseWithRegex(code, JS_FUNCTION_PATTERN, JS_METHOD_PATTERN);
     }
 
-    /**
-     * 使用正则解析 Python 函数/方法
-     */
     private List<MethodInfo> parsePythonMethods(String code) {
         List<MethodInfo> methods = new ArrayList<>();
         String[] lines = code.split("\n");
 
-        // 使用两个正则分别匹配顶级函数和类方法
         Pattern[] patterns = { PYTHON_FUNCTION_PATTERN, PYTHON_METHOD_PATTERN };
 
         for (Pattern pattern : patterns) {
@@ -192,14 +152,12 @@ public class MethodParserServiceImpl implements MethodParserService {
                     int startLine = countNewlines(code.substring(0, startPos)) + 1;
                     info.setStartLine(startLine);
 
-                    // Python 使用缩进，需要特殊处理结束行
                     int endLine = findPythonMethodEndLine(lines, startLine);
                     info.setEndLine(endLine);
 
                     info.setSignature(matcher.group().trim());
                     info.setContent(extractMethodContent(lines, startLine, endLine));
 
-                    // 避免重复
                     boolean duplicate = methods.stream()
                             .anyMatch(m -> m.getName().equals(methodName) && m.getStartLine() == startLine);
                     if (!duplicate) {
@@ -212,9 +170,6 @@ public class MethodParserServiceImpl implements MethodParserService {
         return methods;
     }
 
-    /**
-     * 查找 Python 方法结束行（基于缩进）
-     */
     private int findPythonMethodEndLine(String[] lines, int startLine) {
         if (startLine < 1 || startLine > lines.length) {
             return startLine;
@@ -228,31 +183,25 @@ public class MethodParserServiceImpl implements MethodParserService {
             String line = lines[i];
             String trimmed = line.trim();
 
-            // 跳过空行和纯注释行
             if (trimmed.isEmpty() || trimmed.startsWith("#")) {
                 continue;
             }
 
             int currentIndent = getIndentLevel(line);
 
-            // 第一个非空行确定方法体缩进
             if (bodyIndent < 0) {
                 bodyIndent = currentIndent;
                 continue;
             }
 
-            // 如果缩进回到 def 级别或更少，方法结束
             if (currentIndent <= defIndent) {
-                return i; // 返回上一行
+                return i;
             }
         }
 
-        return lines.length; // 到文件末尾
+        return lines.length;
     }
 
-    /**
-     * 计算缩进级别（空格数，tab 算 4 空格）
-     */
     private int getIndentLevel(String line) {
         int indent = 0;
         for (char c : line.toCharArray()) {
@@ -266,40 +215,24 @@ public class MethodParserServiceImpl implements MethodParserService {
         return indent;
     }
 
-    /**
-     * 使用正则解析 Go 函数/方法
-     */
     private List<MethodInfo> parseGoMethods(String code) {
         return parseWithRegex(code, GO_FUNCTION_PATTERN);
     }
 
-    /**
-     * 使用正则解析 Rust 函数
-     */
     private List<MethodInfo> parseRustMethods(String code) {
         return parseWithRegex(code, RUST_FUNCTION_PATTERN);
     }
 
-    /**
-     * 使用正则解析 C/C++ 函数
-     */
     private List<MethodInfo> parseCMethods(String code) {
         return parseWithRegex(code, C_FUNCTION_PATTERN);
     }
 
-    /**
-     * 通用正则解析
-     */
     private List<MethodInfo> parseGenericMethods(String code) {
-        // 简单的通用函数匹配
         Pattern genericPattern = Pattern.compile(
                 "(?:function|def|fn|func)\\s+(\\w+)\\s*\\([^)]*\\)");
         return parseWithRegex(code, genericPattern, null);
     }
 
-    /**
-     * 使用正则表达式解析方法
-     */
     private List<MethodInfo> parseWithRegex(String code, Pattern... patterns) {
         List<MethodInfo> methods = new ArrayList<>();
         String[] lines = code.split("\n");
@@ -323,20 +256,16 @@ public class MethodParserServiceImpl implements MethodParserService {
                     MethodInfo info = new MethodInfo();
                     info.setName(methodName);
 
-                    // 计算行号
                     int startPos = matcher.start();
                     int startLine = countNewlines(code.substring(0, startPos)) + 1;
                     info.setStartLine(startLine);
 
-                    // 尝试找到方法结束位置（匹配大括号）
                     int endLine = findMethodEndLine(code, matcher.end());
                     info.setEndLine(endLine);
 
-                    // 提取方法内容
                     info.setSignature(matcher.group().trim());
                     info.setContent(extractMethodContent(lines, startLine, endLine));
 
-                    // 避免重复
                     boolean duplicate = methods.stream()
                             .anyMatch(m -> m.getName().equals(methodName) && m.getStartLine() == startLine);
                     if (!duplicate) {

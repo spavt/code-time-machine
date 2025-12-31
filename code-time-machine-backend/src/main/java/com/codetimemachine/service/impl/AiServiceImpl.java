@@ -16,15 +16,6 @@ import reactor.core.publisher.Flux;
 
 import java.time.Duration;
 
-/**
- * AI服务实现
- *
- * TODO:
- * - 添加更多AI提供商支持（通义千问、文心一言）
- * - 添加Token计数
- * - 添加请求限流
- * - 优化Prompt
- */
 @Slf4j
 @Service
 public class AiServiceImpl implements AiService {
@@ -45,13 +36,11 @@ public class AiServiceImpl implements AiService {
     private final WebClient webClient;
 
     public AiServiceImpl() {
-        // 配置 RestTemplate 超时（60秒连接，60秒读取）
         org.springframework.http.client.SimpleClientHttpRequestFactory factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(60000);
         factory.setReadTimeout(60000);
         this.restTemplate = new RestTemplate(factory);
 
-        // 配置 WebClient 用于流式请求
         this.webClient = WebClient.builder()
                 .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
                 .build();
@@ -101,7 +90,6 @@ public class AiServiceImpl implements AiService {
     public AiAnalysis analyzeCommit(CommitRecord commit, String diffSummary) {
         AiAnalysis analysis = new AiAnalysis();
 
-        // 如果没有配置API Key，返回模拟数据
         if (apiKey == null || apiKey.isEmpty() || apiKey.startsWith("sk-xxx")) {
             log.warn("AI API Key未配置，使用模拟数据");
             return mockAnalysis(commit);
@@ -116,7 +104,6 @@ public class AiServiceImpl implements AiService {
 
             String response = callAiApi(prompt);
 
-            // 解析JSON响应
             JSONObject json = parseJsonFromResponse(response);
             if (json != null) {
                 analysis.setSummary(json.getString("summary"));
@@ -139,7 +126,6 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public String askQuestion(String question, String context) {
-        // 如果没有配置API Key，返回模拟回答
         if (apiKey == null || apiKey.isEmpty() || apiKey.startsWith("sk-xxx")) {
             log.warn("AI API Key未配置，使用模拟回答");
             return mockAnswer(question, context);
@@ -163,7 +149,6 @@ public class AiServiceImpl implements AiService {
 
     @Override
     public Flux<String> askQuestionStream(String question, String context) {
-        // 如果没有配置API Key，返回模拟流式输出
         if (apiKey == null || apiKey.isEmpty() || apiKey.startsWith("sk-xxx")) {
             log.warn("AI API Key未配置，使用模拟流式回答");
             return mockStreamAnswer(question, context);
@@ -185,9 +170,6 @@ public class AiServiceImpl implements AiService {
         }
     }
 
-    /**
-     * 流式调用AI API
-     */
     private Flux<String> callAiApiStream(String prompt) {
         JSONObject requestBody = new JSONObject();
         requestBody.put("model", model);
@@ -218,12 +200,8 @@ public class AiServiceImpl implements AiService {
                 });
     }
 
-    /**
-     * 从SSE数据中提取delta内容
-     */
     private String extractDeltaContent(String data) {
         try {
-            // SSE格式: data: {...}
             String jsonStr = data.startsWith("data:") ? data.substring(5).trim() : data.trim();
             if (jsonStr.isEmpty() || jsonStr.equals("[DONE]")) {
                 return "";
@@ -240,26 +218,18 @@ public class AiServiceImpl implements AiService {
                 }
             }
         } catch (Exception e) {
-            // 忽略解析错误，可能是非JSON格式的SSE消息
             log.trace("解析SSE数据失败: {}", data);
         }
         return "";
     }
 
-    /**
-     * 模拟流式AI回答（用于演示，未配置API Key时使用）
-     */
     private Flux<String> mockStreamAnswer(String question, String context) {
         String fullAnswer = mockAnswer(question, context);
 
-        // 将回答拆分成单个字符，模拟流式输出
         return Flux.fromArray(fullAnswer.split(""))
-                .delayElements(Duration.ofMillis(30)); // 每个字符间隔30ms
+                .delayElements(Duration.ofMillis(30));
     }
 
-    /**
-     * 调用AI API
-     */
     private String callAiApi(String prompt) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -295,18 +265,13 @@ public class AiServiceImpl implements AiService {
         return null;
     }
 
-    /**
-     * 从AI响应中解析JSON
-     */
     private JSONObject parseJsonFromResponse(String response) {
         if (response == null)
             return null;
 
         try {
-            // 尝试直接解析
             return JSON.parseObject(response);
         } catch (Exception e) {
-            // 尝试提取JSON部分
             int start = response.indexOf("{");
             int end = response.lastIndexOf("}");
             if (start >= 0 && end > start) {
@@ -320,9 +285,6 @@ public class AiServiceImpl implements AiService {
         return null;
     }
 
-    /**
-     * 截断文本
-     */
     private String truncate(String text, int maxLength) {
         if (text == null)
             return "";
@@ -331,15 +293,11 @@ public class AiServiceImpl implements AiService {
         return text.substring(0, maxLength) + "...";
     }
 
-    /**
-     * 模拟AI分析（用于演示，未配置API Key时使用）
-     */
     private AiAnalysis mockAnalysis(CommitRecord commit) {
         AiAnalysis analysis = new AiAnalysis();
 
         String message = commit.getCommitMessage().toLowerCase();
 
-        // 根据commit message简单判断类型
         if (message.contains("fix") || message.contains("bug") || message.contains("修复")) {
             analysis.setChangeCategory("bugfix");
             analysis.setSummary("修复了一个bug问题");
@@ -403,13 +361,9 @@ public class AiServiceImpl implements AiService {
         return analysis;
     }
 
-    /**
-     * 模拟AI回答（用于演示，未配置API Key时使用）
-     */
     private String mockAnswer(String question, String context) {
         String q = question.toLowerCase();
 
-        // 检查是否有代码上下文
         boolean hasContext = context != null && !context.trim().isEmpty();
         String contextInfo = hasContext
                 ? "根据当前代码（" + context.split("\n").length + "行）"
@@ -495,11 +449,7 @@ public class AiServiceImpl implements AiService {
         return mockLearningPath(projectMetadata);
     }
 
-    /**
-     * 模拟学习路径（未配置API Key时使用）
-     */
     private String mockLearningPath(String projectMetadata) {
-        // 从元数据中提取项目名
         String projectName = "Java项目";
         if (projectMetadata.contains("项目名:")) {
             int start = projectMetadata.indexOf("项目名:") + 4;
