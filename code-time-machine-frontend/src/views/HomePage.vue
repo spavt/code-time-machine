@@ -119,6 +119,106 @@ async function deleteRepo(repo: Repository, event: Event) {
       </div>
     </section>
 
+    <!-- Product Preview (Linear-style embedded) -->
+    <section class="product-preview-section">
+      <div class="product-preview-container">
+        <div class="product-preview-wrapper">
+          <!-- 模拟的播放器界面 -->
+          <div class="mock-player">
+            <!-- 顶部控制栏 -->
+            <div class="mock-header">
+              <div class="mock-header-left">
+                <div class="mock-btn mock-btn-back">←</div>
+                <div class="mock-file-path">
+                  <span class="mock-icon">📄</span>
+                  <span>src/composables/useTimelinePlayer.ts</span>
+                </div>
+              </div>
+              <div class="mock-header-right">
+                <div class="mock-badge">TypeScript</div>
+                <div class="mock-btn">⚙️</div>
+              </div>
+            </div>
+
+            <!-- 主体区域 -->
+            <div class="mock-body">
+              <!-- 左侧时间线 -->
+              <div class="mock-timeline">
+                <div class="mock-timeline-header">时间轴</div>
+                <div class="mock-timeline-list">
+                  <div class="mock-commit" v-for="i in 6" :key="i" :class="{ active: i === 3 }">
+                    <div class="mock-commit-dot"></div>
+                    <div class="mock-commit-content">
+                      <div class="mock-commit-msg">{{ ['feat: 添加虚拟滚动', 'fix: 修复切换bug', 'refactor: 优化性能', 'style: 调整样式', 'docs: 更新文档', 'test: 添加测试'][i-1] }}</div>
+                      <div class="mock-commit-meta">{{ ['张三', '李四', '王五', '赵六', '钱七', '孙八'][i-1] }} · {{ i }}天前</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 中间代码区 -->
+              <div class="mock-code-area">
+                <div class="mock-code-header">
+                  <span>代码变更</span>
+                  <div class="mock-stats">
+                    <span class="mock-stat-add">+42</span>
+                    <span class="mock-stat-del">-18</span>
+                  </div>
+                </div>
+                <div class="mock-code-viewer">
+                  <div class="mock-code-line" v-for="i in 12" :key="i" :class="{ 
+                    'line-added': [3, 4, 5, 8, 9].includes(i),
+                    'line-deleted': [6].includes(i)
+                  }">
+                    <span class="mock-line-num">{{ i + 45 }}</span>
+                    <span class="mock-line-content">
+                      {{ ['  const player = useTimelinePlayer()', '  ', '  // 新增: 虚拟滚动支持', '  const { list, containerProps } = useVirtualList(', '    codeLines, { itemHeight: 22 }', '  // 旧代码: 直接渲染所有行', '  )', '  ', '  // 性能优化: 预加载窗口', '  function preloadWindow(centerIndex: number) {', '    const start = Math.max(0, centerIndex - 5)', '    const end = Math.min(length - 1, centerIndex + 5)'][i-1] }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 右侧 AI 面板 -->
+              <div class="mock-ai-panel">
+                <div class="mock-ai-header">
+                  <span class="mock-ai-icon">🤖</span>
+                  <span>AI 助手</span>
+                </div>
+                <div class="mock-ai-chat">
+                  <div class="mock-ai-msg mock-ai-user">
+                    这次提交做了什么优化？
+                  </div>
+                  <div class="mock-ai-msg mock-ai-assistant">
+                    <div class="mock-typing">
+                      这次提交引入了虚拟滚动技术，使用 <code>useVirtualList</code> 来优化大文件的渲染性能。主要变更：
+                      <br/><br/>
+                      1. 仅渲染可视区域内的代码行<br/>
+                      2. 添加了预加载窗口机制<br/>
+                      3. 预计可提升 10x 渲染速度
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部播放控制 -->
+            <div class="mock-controls">
+              <div class="mock-play-btn">▶</div>
+              <div class="mock-progress">
+                <div class="mock-progress-bar">
+                  <div class="mock-progress-fill"></div>
+                </div>
+                <span class="mock-progress-text">3 / 156</span>
+              </div>
+              <div class="mock-speed">1x</div>
+            </div>
+          </div>
+        </div>
+        <!-- 底部渐变遮罩 -->
+        <div class="product-preview-fade"></div>
+      </div>
+    </section>
+
     <!-- Features Grid -->
     <section class="features-section">
       <div class="feature-grid">
@@ -518,5 +618,396 @@ async function deleteRepo(repo: Repository, event: Event) {
   .feature-grid { grid-template-columns: 1fr; }
   .navbar { width: 95%; top: 10px; }
   .nav-links { display: none; }
+  .product-preview-wrapper { transform: perspective(1000px) rotateX(5deg) scale(0.9); }
+  .mock-ai-panel { display: none; }
+  .mock-timeline { display: none; }
+}
+
+/* ========== Product Preview Section (Linear-style) ========== */
+.product-preview-section {
+  position: relative;
+  padding: 0 20px 40px;
+  margin-top: -20px;
+  overflow: visible;
+}
+
+.product-preview-container {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.product-preview-wrapper {
+  transform: perspective(2000px) rotateX(8deg) scale(0.95);
+  transform-origin: center top;
+  transition: transform 0.5s ease;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 
+    0 50px 100px -20px rgba(0, 0, 0, 0.5),
+    0 30px 60px -30px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.product-preview-wrapper:hover {
+  transform: perspective(2000px) rotateX(3deg) scale(0.98);
+}
+
+.product-preview-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 200px;
+  background: linear-gradient(to top, var(--bg-primary) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ========== Mock Player Styles ========== */
+.mock-player {
+  background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #e6edf3;
+  font-size: 13px;
+}
+
+/* Mock Header */
+.mock-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mock-header-left, .mock-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mock-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.mock-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mock-file-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8b949e;
+}
+
+.mock-file-path span:last-child {
+  color: #e6edf3;
+  font-weight: 500;
+}
+
+.mock-badge {
+  padding: 4px 10px;
+  background: linear-gradient(135deg, #3178c6 0%, #235a9a 100%);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Mock Body */
+.mock-body {
+  display: grid;
+  grid-template-columns: 200px 1fr 260px;
+  min-height: 320px;
+}
+
+/* Mock Timeline */
+.mock-timeline {
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.mock-timeline-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #8b949e;
+  margin-bottom: 12px;
+  letter-spacing: 0.5px;
+}
+
+.mock-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mock-commit {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.mock-commit:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mock-commit.active {
+  background: rgba(88, 166, 255, 0.15);
+}
+
+.mock-commit.active .mock-commit-dot {
+  background: #58a6ff;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.6);
+}
+
+.mock-commit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #484f58;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+
+.mock-commit-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.mock-commit-msg {
+  font-size: 12px;
+  color: #e6edf3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.mock-commit-meta {
+  font-size: 11px;
+  color: #6e7681;
+}
+
+/* Mock Code Area */
+.mock-code-area {
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+}
+
+.mock-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-weight: 500;
+}
+
+.mock-stats {
+  display: flex;
+  gap: 12px;
+}
+
+.mock-stat-add {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.mock-stat-del {
+  color: #f85149;
+  font-weight: 600;
+}
+
+.mock-code-viewer {
+  flex: 1;
+  padding: 8px 0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+.mock-code-line {
+  display: flex;
+  padding: 1px 16px;
+  transition: background 0.15s;
+}
+
+.mock-code-line.line-added {
+  background: rgba(63, 185, 80, 0.15);
+  border-left: 3px solid #3fb950;
+}
+
+.mock-code-line.line-deleted {
+  background: rgba(248, 81, 73, 0.15);
+  border-left: 3px solid #f85149;
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.mock-line-num {
+  width: 40px;
+  color: #484f58;
+  text-align: right;
+  margin-right: 16px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.mock-line-content {
+  color: #c9d1d9;
+  white-space: pre;
+}
+
+/* Mock AI Panel */
+.mock-ai-panel {
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.mock-ai-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+}
+
+.mock-ai-icon {
+  font-size: 16px;
+}
+
+.mock-ai-chat {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.mock-ai-msg {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 95%;
+}
+
+.mock-ai-user {
+  background: linear-gradient(135deg, #238636 0%, #1a7f37 100%);
+  color: white;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.mock-ai-assistant {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e6edf3;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.mock-ai-assistant code {
+  background: rgba(110, 118, 129, 0.4);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+/* Mock Controls */
+.mock-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.mock-play-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--color-primary, #58a6ff) 0%, #3178c6 100%);
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.mock-play-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 16px rgba(88, 166, 255, 0.4);
+}
+
+.mock-progress {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mock-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.mock-progress-fill {
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary, #58a6ff), #a371f7);
+  border-radius: 2px;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.mock-progress-text {
+  font-size: 12px;
+  color: #8b949e;
+  min-width: 60px;
+}
+
+.mock-speed {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
 }
 </style>
