@@ -852,7 +852,6 @@ watch(() => player.currentCommit.value?.id, () => {
           <el-icon class="file-icon"><Document /></el-icon>
           <span class="file-path">{{ filePath }}</span>
         </div>
-        </div>
         <!-- 版本信息移到左边 -->
         <div class="commit-info" v-if="player.currentCommit.value">
           <span class="commit-order">#{{ player.currentIndex.value + 1 }}/{{ player.totalFrames.value }}</span>
@@ -1322,20 +1321,12 @@ watch(() => player.currentCommit.value?.id, () => {
   letter-spacing: 0.02em;
 }
 
-/* Frame Counter - Mechanical Style */
-.header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 0;
-  pointer-events: none;
-}
-
+/* Frame Counter - now in header-left */
 .commit-info {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-  padding: 8px 20px;
+  gap: 8px;
+  padding: 6px 12px;
   background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
   border: 1px solid var(--color-amber);
   border-radius: var(--radius-sm);

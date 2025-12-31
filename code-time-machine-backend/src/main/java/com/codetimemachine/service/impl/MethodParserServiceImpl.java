@@ -17,7 +17,8 @@ import java.util.regex.Pattern;
 
 /**
  * 方法解析服务实现
- * 支持 Java (使用 JavaParser) 和 JavaScript/TypeScript (使用正则)
+ * 支持多种语言：Java (使用 JavaParser), JavaScript/TypeScript, Python, Go, Rust, C/C++
+ * (使用正则)
  */
 @Slf4j
 @Service
@@ -37,6 +38,39 @@ public class MethodParserServiceImpl implements MethodParserService {
             "(?:(?:public|private|protected|static|async)\\s+)*" +
                     "(\\w+)\\s*\\([^)]*\\)\\s*(?::\\s*[\\w<>\\[\\]|&\\s]+)?\\s*\\{");
 
+    // Python 函数匹配正则
+    // 匹配: def function_name(params):
+    // 支持: async def, 装饰器后的函数
+    private static final Pattern PYTHON_FUNCTION_PATTERN = Pattern.compile(
+            "^[ \\t]*(?:async\\s+)?def\\s+(\\w+)\\s*\\([^)]*\\)\\s*(?:->\\s*[^:]+)?\\s*:",
+            Pattern.MULTILINE);
+
+    // Python 类方法匹配（带 self 参数）
+    private static final Pattern PYTHON_METHOD_PATTERN = Pattern.compile(
+            "^[ \\t]+(?:async\\s+)?def\\s+(\\w+)\\s*\\(\\s*(?:self|cls)[^)]*\\)\\s*(?:->\\s*[^:]+)?\\s*:",
+            Pattern.MULTILINE);
+
+    // Go 函数匹配正则
+    // 匹配: func functionName(params) returnType {
+    // 匹配: func (receiver) methodName(params) returnType {
+    private static final Pattern GO_FUNCTION_PATTERN = Pattern.compile(
+            "^func\\s+(?:\\([^)]+\\)\\s+)?(\\w+)\\s*\\([^)]*\\)",
+            Pattern.MULTILINE);
+
+    // Rust 函数匹配正则
+    // 匹配: fn function_name(params) -> ReturnType {
+    // 匹配: pub fn, async fn, pub async fn
+    private static final Pattern RUST_FUNCTION_PATTERN = Pattern.compile(
+            "^\\s*(?:pub\\s+)?(?:async\\s+)?fn\\s+(\\w+)\\s*(?:<[^>]*>)?\\s*\\([^)]*\\)",
+            Pattern.MULTILINE);
+
+    // C/C++ 函数匹配正则
+    // 匹配: returnType functionName(params) {
+    // 支持: static, inline, virtual 等修饰符
+    private static final Pattern C_FUNCTION_PATTERN = Pattern.compile(
+            "^[\\w\\s*&]+\\s+(\\w+)\\s*\\([^)]*\\)\\s*(?:const)?\\s*\\{",
+            Pattern.MULTILINE);
+
     private final JavaParser javaParser = new JavaParser();
 
     @Override
@@ -47,8 +81,12 @@ public class MethodParserServiceImpl implements MethodParserService {
 
         return switch (language.toLowerCase()) {
             case "java" -> parseJavaMethods(code);
-            case "javascript", "js" -> parseJavaScriptMethods(code);
+            case "javascript", "js", "jsx" -> parseJavaScriptMethods(code);
             case "typescript", "ts", "tsx" -> parseTypeScriptMethods(code);
+            case "python", "py" -> parsePythonMethods(code);
+            case "go", "golang" -> parseGoMethods(code);
+            case "rust", "rs" -> parseRustMethods(code);
+            case "c", "cpp", "cc", "cxx", "h", "hpp" -> parseCMethods(code);
             default -> parseGenericMethods(code);
         };
     }
@@ -130,6 +168,123 @@ public class MethodParserServiceImpl implements MethodParserService {
      */
     private List<MethodInfo> parseTypeScriptMethods(String code) {
         return parseWithRegex(code, JS_FUNCTION_PATTERN, JS_METHOD_PATTERN);
+    }
+
+    /**
+     * 使用正则解析 Python 函数/方法
+     */
+    private List<MethodInfo> parsePythonMethods(String code) {
+        List<MethodInfo> methods = new ArrayList<>();
+        String[] lines = code.split("\n");
+
+        // 使用两个正则分别匹配顶级函数和类方法
+        Pattern[] patterns = { PYTHON_FUNCTION_PATTERN, PYTHON_METHOD_PATTERN };
+
+        for (Pattern pattern : patterns) {
+            Matcher matcher = pattern.matcher(code);
+            while (matcher.find()) {
+                String methodName = matcher.group(1);
+                if (methodName != null) {
+                    MethodInfo info = new MethodInfo();
+                    info.setName(methodName);
+
+                    int startPos = matcher.start();
+                    int startLine = countNewlines(code.substring(0, startPos)) + 1;
+                    info.setStartLine(startLine);
+
+                    // Python 使用缩进，需要特殊处理结束行
+                    int endLine = findPythonMethodEndLine(lines, startLine);
+                    info.setEndLine(endLine);
+
+                    info.setSignature(matcher.group().trim());
+                    info.setContent(extractMethodContent(lines, startLine, endLine));
+
+                    // 避免重复
+                    boolean duplicate = methods.stream()
+                            .anyMatch(m -> m.getName().equals(methodName) && m.getStartLine() == startLine);
+                    if (!duplicate) {
+                        methods.add(info);
+                    }
+                }
+            }
+        }
+
+        return methods;
+    }
+
+    /**
+     * 查找 Python 方法结束行（基于缩进）
+     */
+    private int findPythonMethodEndLine(String[] lines, int startLine) {
+        if (startLine < 1 || startLine > lines.length) {
+            return startLine;
+        }
+
+        String defLine = lines[startLine - 1];
+        int defIndent = getIndentLevel(defLine);
+        int bodyIndent = -1;
+
+        for (int i = startLine; i < lines.length; i++) {
+            String line = lines[i];
+            String trimmed = line.trim();
+
+            // 跳过空行和纯注释行
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+
+            int currentIndent = getIndentLevel(line);
+
+            // 第一个非空行确定方法体缩进
+            if (bodyIndent < 0) {
+                bodyIndent = currentIndent;
+                continue;
+            }
+
+            // 如果缩进回到 def 级别或更少，方法结束
+            if (currentIndent <= defIndent) {
+                return i; // 返回上一行
+            }
+        }
+
+        return lines.length; // 到文件末尾
+    }
+
+    /**
+     * 计算缩进级别（空格数，tab 算 4 空格）
+     */
+    private int getIndentLevel(String line) {
+        int indent = 0;
+        for (char c : line.toCharArray()) {
+            if (c == ' ')
+                indent++;
+            else if (c == '\t')
+                indent += 4;
+            else
+                break;
+        }
+        return indent;
+    }
+
+    /**
+     * 使用正则解析 Go 函数/方法
+     */
+    private List<MethodInfo> parseGoMethods(String code) {
+        return parseWithRegex(code, GO_FUNCTION_PATTERN);
+    }
+
+    /**
+     * 使用正则解析 Rust 函数
+     */
+    private List<MethodInfo> parseRustMethods(String code) {
+        return parseWithRegex(code, RUST_FUNCTION_PATTERN);
+    }
+
+    /**
+     * 使用正则解析 C/C++ 函数
+     */
+    private List<MethodInfo> parseCMethods(String code) {
+        return parseWithRegex(code, C_FUNCTION_PATTERN);
     }
 
     /**
