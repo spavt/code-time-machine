@@ -31,8 +31,8 @@ const suggestions = ref<string[]>([]) // 智能推荐问题
 const contentLoading = new Map<number, Promise<void>>()
 let commitLoadToken = 0
 
-// 代码高亮缓存：key = commitId, value = 高亮后的 HTML
-const highlightCache = new Map<number, string>()
+// 代码高亮缓存：key = commitId_contentLength, value = 高亮后的 HTML
+const highlightCache = new Map<string, string>()
 
 // 分屏对比模式
 const viewMode = ref<'single' | 'split'>('single')
@@ -55,7 +55,7 @@ const analysisLoading = ref(false)
 const showAnalysisPopover = ref(false)
 
 // 播放器界面风格切换 - 支持多种风格
-type PlayerStyleType = 'cinematic' | 'classic' | 'neon' | 'glassmorphism'
+type PlayerStyleType = 'cinematic' | 'classic' | 'neon' | 'glassmorphism' | 'softui' | 'softui-dark'
 const playerStyle = ref<PlayerStyleType>(
   (localStorage.getItem('playerStyle') as PlayerStyleType) || 'cinematic'
 )
@@ -64,7 +64,9 @@ const styleOptions = [
   { value: 'cinematic', label: '🎬 电影', desc: 'Art Deco 风格' },
   { value: 'classic', label: '💻 经典', desc: '简洁现代' },
   { value: 'neon', label: '🌈 霓虹', desc: '赛博朋克' },
-  { value: 'glassmorphism', label: '🪟 玻璃', desc: '毛玻璃效果' }
+  { value: 'glassmorphism', label: '🪟 玻璃', desc: '毛玻璃效果' },
+  { value: 'softui', label: '🧸 柔和', desc: 'Soft UI 浅色' },
+  { value: 'softui-dark', label: '🌙 柔夜', desc: 'Soft UI 深色' }
 ]
 
 function onStyleChange(value: PlayerStyleType) {
@@ -148,33 +150,33 @@ let batchLoadingPromise: Promise<void> | null = null
 
 function preloadWindow(centerIndex: number) {
   if (trackingMode.value !== 'file') return
-  
+
   const commitList = commits.value
   const start = Math.max(0, centerIndex - PRELOAD_WINDOW_SIZE)
   const end = Math.min(commitList.length - 1, centerIndex + PRELOAD_WINDOW_SIZE)
-  
+
   // 收集需要预加载的 commitIds（排除当前帧，当前帧单独加载）
   const toLoad: number[] = []
   for (let i = start; i <= end; i++) {
     // 跳过当前帧，当前帧由 watch 中的 ensureCommitContent 处理
     if (i === centerIndex) continue
-    
+
     const commit = commitList[i]
     if (commit && commit.content == null && !contentLoading.has(commit.id)) {
       toLoad.push(commit.id)
     }
   }
-  
+
   if (toLoad.length === 0) return
-  
+
   // 如果已经在批量加载中，跳过（不影响当前帧）
   if (batchLoadingPromise) return
-  
+
   // 批量请求（后台静默加载，不阻塞）
   batchLoadingPromise = (async () => {
     try {
       const results = await fileApi.getBatchContent(repoId.value, toLoad, filePath.value)
-      
+
       // 将结果填充到对应的 commit 对象中
       for (const [commitIdStr, data] of Object.entries(results)) {
         const commitId = Number(commitIdStr)
@@ -204,15 +206,19 @@ function preloadWindow(centerIndex: number) {
 
 
 // 获取缓存的高亮代码，若未缓存则计算并缓存
+// 使用 commitId + 内容长度作为缓存 key，区分文件模式和方法模式
 function getCachedHighlight(commitId: number, content: string): string {
   if (!content) return ''
+
+  // 使用 commitId + 内容长度 作为缓存 key（方法模式下内容长度不同）
+  const cacheKey = `${commitId}_${content.length}`
   
   // 检查缓存
-  const cached = highlightCache.get(commitId)
+  const cached = highlightCache.get(cacheKey)
   if (cached !== undefined) {
     return cached
   }
-  
+
   // 计算高亮并缓存
   let highlighted: string
   try {
@@ -220,8 +226,8 @@ function getCachedHighlight(commitId: number, content: string): string {
   } catch {
     highlighted = content
   }
-  
-  highlightCache.set(commitId, highlighted)
+
+  highlightCache.set(cacheKey, highlighted)
   return highlighted
 }
 
@@ -229,13 +235,13 @@ function getCachedHighlight(commitId: number, content: string): string {
 function enrichHistoryMessages() {
   const commitList = commits.value
   if (commitList.length === 0) return
-  
+
   // 创建 commitId -> commit 的映射
   const commitMap = new Map<number, { order: number; shortHash: string; message: string }>()
   commitList.forEach((c, idx) => {
     commitMap.set(c.id, { order: idx + 1, shortHash: c.shortHash, message: c.commitMessage })
   })
-  
+
   // 遍历消息，补充缺失的字段
   for (const msg of chat.messages.value) {
     if (msg.role === 'user' && msg.commitId && !msg.commitOrder) {
@@ -284,22 +290,38 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
     const commitContent = commit.content ?? undefined
     // 保存之前的代码用于对比
     previousCode.value = oldCommit?.content ?? ''
-    
+
+    // DEBUG: 追踪数据流
+    console.log('[Watch] trackingMode:', trackingMode.value)
+    console.log('[Watch] selectedMethod:', selectedMethod.value)
+    console.log('[Watch] commitContent 行数:', commitContent?.split('\n').length)
+
     // 根据追踪模式设置当前代码
     if (trackingMode.value === 'method' && selectedMethod.value && commitContent != null) {
-      // 方法模式：从文件中提取方法代码
-      const methodContent = extractMethodFromCode(commitContent, selectedMethod.value)
-      currentCode.value = methodContent || commitContent
-      // 也更新 previousCode 为方法代码
-      if (previousCode.value) {
-        previousCode.value = extractMethodFromCode(previousCode.value, selectedMethod.value) || previousCode.value
+      // 方法模式：后端已返回提取的方法代码，直接使用
+      // 如果后端返回的是完整文件（向后兼容），则在前端提取
+      const isFullFile = commitContent.split('\n').length > 100 || commitContent.includes('import ')
+      console.log('[Watch] isFullFile:', isFullFile, '(>100行 或 包含import)')
+      
+      if (isFullFile) {
+        const methodContent = extractMethodFromCode(commitContent, selectedMethod.value)
+        console.log('[Watch] 前端提取方法行数:', methodContent?.split('\n').length)
+        currentCode.value = methodContent || commitContent
+        if (previousCode.value) {
+          previousCode.value = extractMethodFromCode(previousCode.value, selectedMethod.value) || previousCode.value
+        }
+      } else {
+        console.log('[Watch] 直接使用后端返回的方法内容')
+        currentCode.value = commitContent
+        // previousCode 也应该是方法代码
       }
+      console.log('[Watch] 最终 currentCode 行数:', currentCode.value.split('\n').length)
     } else {
       // 文件模式：显示完整文件
       currentCode.value = commitContent == null ? '// 加载中...' : commitContent
     }
     // 注：移除了 changeKey.value++ 以避免 DOM 重建导致滚动位置重置
-    
+
     // ========== 立即执行滚动（不等待 diff API） ==========
     // 自动滚动到第一个变化行（等待 DOM 完全渲染）
     await nextTick()
@@ -309,11 +331,11 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
     if (requestId !== commitLoadToken) return
     // 立即执行滚动，不再使用 setTimeout 延迟
     scrollToFirstChange()
-    
+
     // ========== 以下为后台任务，不阻塞滚动 ==========
     // 构建富上下文：元信息 + diff + 代码片段
     let contextParts: string[] = []
-    
+
     // 1. 元信息
     contextParts.push(`文件: ${filePath.value}`)
     contextParts.push(`提交: ${commit.commitMessage}`)
@@ -322,13 +344,13 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
     if (commit.aiSummary) {
       contextParts.push(`AI摘要: ${commit.aiSummary}`)
     }
-    
+
     // 2. 获取 diff（如果有上一个版本）- 后台获取，不阻塞 UI
     if (oldCommit?.commitHash) {
       fileApi.getDiff(
-        repoId.value, 
-        oldCommit.commitHash, 
-        commit.commitHash, 
+        repoId.value,
+        oldCommit.commitHash,
+        commit.commitHash,
         filePath.value
       ).then((diffResult) => {
         if (requestId !== commitLoadToken) return // 帧已切换，忽略结果
@@ -342,7 +364,7 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
         console.warn('获取diff失败:', e)
       })
     }
-    
+
     // 3. 当前代码片段（用剩余空间）
     const contextSoFar = contextParts.join('\n')
     const remainingSpace = 4500 - contextSoFar.length
@@ -350,7 +372,7 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
       contextParts.push('\n=== 当前代码 ===')
       contextParts.push(commitContent.slice(0, remainingSpace))
     }
-    
+
     // 更新AI聊天上下文（包含当前帧信息）
     chat.setContext({
       repoId: repoId.value,
@@ -360,7 +382,7 @@ watch(() => player.currentCommit.value, async (commit, oldCommit) => {
       filePath: filePath.value,
       codeSnippet: contextParts.join('\n')
     })
-    
+
     // 加载智能推荐问题 - 后台获取，不阻塞 UI
     if (commit.id) {
       chat.getSuggestions(commit.id).then((result) => {
@@ -443,11 +465,11 @@ const {
 // 自动滚动到第一个变化行
 function scrollToFirstChange() {
   const firstLine = changedLines.value.firstChangedLine
-  
+
   if (!firstLine) {
     return
   }
-  
+
   // 虚拟滚动模式：使用 scrollTo API
   if (useVirtualCodeViewer.value) {
     // 滚动到目标行，居中显示
@@ -458,22 +480,22 @@ function scrollToFirstChange() {
     }
     return
   }
-  
+
   // 非虚拟滚动模式：使用原有 DOM 滚动逻辑
   if (viewMode.value === 'split') {
     // 双栏模式：查找实际元素位置，同步滚动两边
     // 播放时使用瞬间滚动（避免动画未完成就切帧），手动时用平滑滚动
     const scrollBehavior: ScrollBehavior = player.isPlaying.value ? 'auto' : 'smooth'
-    
+
     const currentViewer = codeViewerRef.value
     const previousViewer = previousCodeViewerRef.value
-    
+
     if (currentViewer) {
       // 在当前版本中查找目标行
       const lineElement = currentViewer.querySelector(`[data-line="${firstLine}"]`) as HTMLElement
-      
+
       let targetScrollTop: number
-      
+
       if (lineElement) {
         // 找到元素：计算实际位置
         const containerRect = currentViewer.getBoundingClientRect()
@@ -487,7 +509,7 @@ function scrollToFirstChange() {
         const containerHeight = currentViewer.clientHeight
         targetScrollTop = Math.max(0, (firstLine - 1) * lineHeight - containerHeight / 2)
       }
-      
+
       currentViewer.scrollTo({ top: targetScrollTop, behavior: scrollBehavior })
       if (previousViewer) {
         previousViewer.scrollTo({ top: targetScrollTop, behavior: scrollBehavior })
@@ -539,7 +561,7 @@ async function generateEvolutionStory() {
 async function loadMethods() {
   const commit = player.currentCommit.value
   if (!commit) return
-  
+
   methodLoading.value = true
   try {
     const methods = await fileApi.getMethods(repoId.value, commit.id, filePath.value)
@@ -555,7 +577,7 @@ async function loadMethods() {
 // 选择方法进行追踪
 async function selectMethod(methodName: string | null) {
   selectedMethod.value = methodName
-  
+
   if (!methodName) {
     // 切换回文件模式
     trackingMode.value = 'file'
@@ -563,12 +585,19 @@ async function selectMethod(methodName: string | null) {
     player.goToFirst()
     return
   }
-  
+
   trackingMode.value = 'method'
   methodLoading.value = true
-  
+
   try {
     const timeline = await fileApi.getMethodTimeline(repoId.value, filePath.value, methodName)
+    console.log('[Method Tracking] 获取到方法时间线:', timeline.length, '个版本')
+    if (timeline.length > 0) {
+      const firstItem = timeline[0]
+      const contentPreview = firstItem.content?.substring(0, 200)
+      console.log('[Method Tracking] 第一个版本内容预览:', contentPreview)
+      console.log('[Method Tracking] 内容行数:', firstItem.content?.split('\n').length)
+    }
     methodTimelineData.value = timeline
   } catch (e) {
     console.error('Failed to load method timeline:', e)
@@ -592,40 +621,62 @@ function toggleTrackingMode() {
 // 从代码中提取方法内容
 function extractMethodFromCode(code: string, methodName: string): string | null {
   if (!code || !methodName) return null
-  
+
   const lines = code.split('\n')
   let startLine = -1
   let braceCount = 0
   let foundStart = false
   let endLine = -1
-  
+
   // 查找方法开始位置
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] as string
     if (!line) continue
-    
-    // 匹配方法定义（支持 Java、JS、TS）
+
+    // 匹配方法定义（支持 Java、JS、TS、Python、Go）
     if (!foundStart && (
-      line.includes(`${methodName}(`) || 
+      line.includes(`${methodName}(`) ||
       line.includes(`${methodName} (`) ||
       line.match(new RegExp(`\\b${methodName}\\s*\\(`))
     )) {
+      const trimmed = line.trim()
       // 检查是否是方法定义（不是调用）
-      if (line.includes('function') || line.includes('public') || 
-          line.includes('private') || line.includes('protected') ||
-          line.includes('=>') || line.match(/^\s*(async\s+)?[a-zA-Z]+\s+\w+\s*\(/)) {
+      const isDefinition = 
+        // 传统 function 关键字
+        trimmed.startsWith('function ') ||
+        trimmed.startsWith('async function ') ||
+        // 访问修饰符
+        trimmed.startsWith('public ') ||
+        trimmed.startsWith('private ') ||
+        trimmed.startsWith('protected ') ||
+        trimmed.startsWith('static ') ||
+        // 箭头函数赋值
+        line.includes('=>') ||
+        // TypeScript/JavaScript 类方法 (无修饰符): methodName(params) { 或 async methodName(
+        trimmed.match(new RegExp(`^(async\\s+)?${methodName}\\s*[(<]`)) ||
+        // Java/C#: returnType methodName(
+        line.match(/^\s*(public|private|protected|static|final|\w+)\s+\w+\s+\w+\s*\(/) ||
+        // Python: def methodName(
+        trimmed.startsWith('def ') ||
+        trimmed.startsWith('async def ') ||
+        // Go: func methodName(
+        trimmed.startsWith('func ') ||
+        // 变量赋值: const/let/var name = function/arrow
+        line.match(/^\s*(const|let|var)\s+\w+\s*=/)
+
+      if (isDefinition) {
         startLine = i
         foundStart = true
       }
     }
-    
+
     if (foundStart) {
       // 计算大括号
       for (const char of line) {
         if (char === '{') braceCount++
         if (char === '}') braceCount--
       }
-      
+
       // 找到方法结束
       if (braceCount === 0 && line.includes('}')) {
         endLine = i
@@ -633,11 +684,11 @@ function extractMethodFromCode(code: string, methodName: string): string | null 
       }
     }
   }
-  
+
   if (startLine >= 0 && endLine >= startLine) {
     return lines.slice(startLine, endLine + 1).join('\n')
   }
-  
+
   return null
 }
 
@@ -700,17 +751,17 @@ interface MessageGroup {
 const groupedMessages = computed((): MessageGroup[] => {
   const messages = chat.messages.value
   if (messages.length === 0) return []
-  
+
   const groups: MessageGroup[] = []
   let currentGroup: MessageGroup | null = null
-  
+
   for (const msg of messages) {
     // 只有用户消息带有 commitOrder，用它来判断分组
     const msgCommitOrder = msg.role === 'user' ? msg.commitOrder : undefined
-    
+
     // 如果是新的提交组或第一条消息
     if (msg.role === 'user' && (
-      !currentGroup || 
+      !currentGroup ||
       currentGroup.commitOrder !== msgCommitOrder
     )) {
       // 查找对应 commit 获取 message
@@ -723,16 +774,16 @@ const groupedMessages = computed((): MessageGroup[] => {
       }
       groups.push(currentGroup)
     }
-    
+
     if (!currentGroup) {
       // 如果第一条是 assistant 消息（理论上不应该），创建一个无分组
       currentGroup = { messages: [] }
       groups.push(currentGroup)
     }
-    
+
     currentGroup.messages.push(msg)
   }
-  
+
   return groups
 })
 
@@ -801,8 +852,8 @@ watch(() => player.currentCommit.value?.id, () => {
           <el-icon class="file-icon"><Document /></el-icon>
           <span class="file-path">{{ filePath }}</span>
         </div>
-      </div>
-      <div class="header-center">
+        </div>
+        <!-- 版本信息移到左边 -->
         <div class="commit-info" v-if="player.currentCommit.value">
           <span class="commit-order">#{{ player.currentIndex.value + 1 }}/{{ player.totalFrames.value }}</span>
           <span class="commit-hash">{{ player.currentCommit.value.shortHash }}</span>
@@ -810,38 +861,42 @@ watch(() => player.currentCommit.value?.id, () => {
       </div>
       <div class="header-right">
         <!-- 方法级追踪 -->
-        <el-button-group class="tracking-mode-toggle">
-          <el-button :type="trackingMode === 'file' ? 'primary' : 'default'" @click="selectMethod(null)" size="small">
-            <el-icon><Document /></el-icon> 文件
-          </el-button>
-          <el-button :type="trackingMode === 'method' ? 'primary' : 'default'" @click="loadMethods" size="small">
-            <el-icon><Operation /></el-icon> 方法
-          </el-button>
-        </el-button-group>
-        
-        <!-- 方法选择器 -->
-        <el-select
-          v-if="methodList.length > 0"
-          v-model="selectedMethod"
-          placeholder="选择方法"
-          size="small"
-          style="width: 180px; margin-right: 12px;"
-          :loading="methodLoading"
-          @change="selectMethod"
-          clearable
-        >
-          <el-option
-            v-for="method in methodList"
-            :key="method.name"
-            :label="method.name + '()'"
-            :value="method.name"
+        <div class="tracking-controls">
+          <el-button-group class="tracking-mode-toggle">
+            <el-button :type="trackingMode === 'file' ? 'primary' : 'default'" @click="selectMethod(null)" size="small">
+              <el-icon><Document /></el-icon> 文件
+            </el-button>
+            <el-button :type="trackingMode === 'method' ? 'primary' : 'default'" @click="loadMethods" size="small">
+              <el-icon><Operation /></el-icon> 方法
+            </el-button>
+          </el-button-group>
+
+          <!-- 方法选择器 -->
+          <el-select
+            v-if="methodList.length > 0"
+            v-model="selectedMethod"
+            placeholder="选择方法"
+            size="small"
+            style="width: 160px;"
+            :loading="methodLoading"
+            @change="selectMethod"
+            clearable
           >
-            <span>{{ method.name }}()</span>
-            <span style="color: #999; font-size: 12px; margin-left: 8px;">
-              L{{ method.startLine }}-{{ method.endLine }}
-            </span>
-          </el-option>
-        </el-select>
+            <el-option
+              v-for="method in methodList"
+              :key="method.name"
+              :label="method.name + '()'"
+              :value="method.name"
+            >
+              <span>{{ method.name }}()</span>
+              <span style="color: #999; font-size: 12px; margin-left: 8px;">
+                L{{ method.startLine }}-{{ method.endLine }}
+              </span>
+            </el-option>
+          </el-select>
+        </div>
+
+        <span class="header-divider"></span>
 
         <el-button-group class="view-mode-toggle">
           <el-button :type="viewMode === 'single' ? 'primary' : 'default'" @click="viewMode = 'single'" size="small">
@@ -857,10 +912,10 @@ watch(() => player.currentCommit.value?.id, () => {
         <el-button :type="showChat ? 'primary' : 'default'" @click="showChat = !showChat">
           <el-icon><ChatDotRound /></el-icon> {{ showChat ? '关闭' : 'AI对话' }}
         </el-button>
-        <el-select 
-          v-model="playerStyle" 
-          @change="onStyleChange" 
-          size="small" 
+        <el-select
+          v-model="playerStyle"
+          @change="onStyleChange"
+          size="small"
           class="style-selector"
           style="width: 120px;"
         >
@@ -898,8 +953,8 @@ watch(() => player.currentCommit.value?.id, () => {
               trigger="click"
             >
               <template #reference>
-                <el-button 
-                  size="small" 
+                <el-button
+                  size="small"
                   :loading="analysisLoading"
                   @click="fetchAnalysis"
                   class="ai-analysis-btn"
@@ -908,7 +963,7 @@ watch(() => player.currentCommit.value?.id, () => {
                   {{ analysisLoading ? '分析中...' : 'AI 分析' }}
                 </el-button>
               </template>
-              
+
               <!-- Popover 内容 -->
               <div class="analysis-popover" v-if="currentAnalysis">
                 <div class="analysis-header">
@@ -917,18 +972,18 @@ watch(() => player.currentCommit.value?.id, () => {
                     <el-icon><Close /></el-icon>
                   </el-button>
                 </div>
-                
+
                 <div class="analysis-body">
                   <div class="analysis-item" v-if="currentAnalysis.summary">
                     <span class="analysis-label">📝 摘要</span>
                     <p class="analysis-text">{{ currentAnalysis.summary }}</p>
                   </div>
-                  
+
                   <div class="analysis-item" v-if="currentAnalysis.purpose">
                     <span class="analysis-label">🎯 目的</span>
                     <p class="analysis-text">{{ currentAnalysis.purpose }}</p>
                   </div>
-                  
+
                   <div class="analysis-item" v-if="currentAnalysis.impact">
                     <span class="analysis-label">⚡ 影响</span>
                     <p class="analysis-text">{{ currentAnalysis.impact }}</p>
@@ -936,17 +991,17 @@ watch(() => player.currentCommit.value?.id, () => {
                 </div>
 
                 <div class="analysis-footer">
-                  <span 
+                  <span
                     v-if="getCategoryInfo(currentAnalysis.changeCategory)"
                     class="category-tag"
-                    :style="{ 
+                    :style="{
                       background: getCategoryInfo(currentAnalysis.changeCategory)?.color + '20',
                       color: getCategoryInfo(currentAnalysis.changeCategory)?.color
                     }"
                   >
                     {{ getCategoryInfo(currentAnalysis.changeCategory)?.label }}
                   </span>
-                  
+
                   <div class="analysis-scores" v-if="currentAnalysis.complexityScore || currentAnalysis.importanceScore">
                     <span v-if="currentAnalysis.complexityScore" class="score-item">
                       复杂度: <span class="score-stars">{{ renderStars(currentAnalysis.complexityScore) }}</span>
@@ -958,7 +1013,7 @@ watch(() => player.currentCommit.value?.id, () => {
                 </div>
               </div>
             </el-popover>
-            
+
             <!-- 简短摘要（如果已有分析） -->
             <span v-if="currentAnalysis?.summary" class="quick-summary" @click="showAnalysisPopover = true">
               {{ currentAnalysis.summary.slice(0, 50) }}{{ currentAnalysis.summary.length > 50 ? '...' : '' }}
@@ -967,19 +1022,19 @@ watch(() => player.currentCommit.value?.id, () => {
         </div>
         <div class="code-viewers" :class="{ 'code-viewers--split': viewMode === 'split' }">
           <!-- 旧版本代码（分屏模式） -->
-          <div 
-            class="code-viewer code-viewer--previous" 
-            v-if="viewMode === 'split'" 
-            ref="previousCodeViewerRef" 
+          <div
+            class="code-viewer code-viewer--previous"
+            v-if="viewMode === 'split'"
+            ref="previousCodeViewerRef"
             @scroll="syncScroll('previous')"
             v-bind="useVirtualPreviousViewer ? previousContainerProps : {}"
           >
             <div class="code-viewer-label">旧版本</div>
             <!-- 虚拟滚动模式 -->
             <div v-if="useVirtualPreviousViewer" class="code-content" v-bind="previousWrapperProps">
-              <div 
-                v-for="{ data: line, index } in virtualPreviousCodeLines" 
-                :key="index" 
+              <div
+                v-for="{ data: line, index } in virtualPreviousCodeLines"
+                :key="index"
                 :data-line="line.number"
                 class="code-line"
                 :class="{ 'code-line--deleted': line.type === 'deleted' }"
@@ -990,9 +1045,9 @@ watch(() => player.currentCommit.value?.id, () => {
             </div>
             <!-- 普通渲染模式 -->
             <div v-else class="code-content">
-              <div 
-                v-for="line in previousCodeLines" 
-                :key="line.number" 
+              <div
+                v-for="line in previousCodeLines"
+                :key="line.number"
                 :data-line="line.number"
                 class="code-line"
                 :class="{ 'code-line--deleted': line.type === 'deleted' }"
@@ -1003,19 +1058,19 @@ watch(() => player.currentCommit.value?.id, () => {
             </div>
           </div>
           <!-- 新版本代码 -->
-          <div 
-            class="code-viewer" 
-            :class="{ 'code-viewer--current': viewMode === 'split' }" 
-            ref="codeViewerRef" 
+          <div
+            class="code-viewer"
+            :class="{ 'code-viewer--current': viewMode === 'split' }"
+            ref="codeViewerRef"
             @scroll="syncScroll('current')"
             v-bind="useVirtualCodeViewer ? codeContainerProps : {}"
           >
             <div class="code-viewer-label" v-if="viewMode === 'split'">新版本</div>
             <!-- 虚拟滚动模式 -->
             <div v-if="useVirtualCodeViewer" class="code-content" v-bind="codeWrapperProps">
-              <div 
-                v-for="{ data: line, index } in virtualCodeLines" 
-                :key="index" 
+              <div
+                v-for="{ data: line, index } in virtualCodeLines"
+                :key="index"
                 :data-line="line.number"
                 class="code-line"
                 :class="{ 'code-line--added': line.type === 'added' }"
@@ -1026,9 +1081,9 @@ watch(() => player.currentCommit.value?.id, () => {
             </div>
             <!-- 普通渲染模式 -->
             <div v-else class="code-content">
-              <div 
-                v-for="line in codeLines" 
-                :key="line.number" 
+              <div
+                v-for="line in codeLines"
+                :key="line.number"
                 :data-line="line.number"
                 class="code-line"
                 :class="{ 'code-line--added': line.type === 'added' }"
@@ -1057,8 +1112,8 @@ watch(() => player.currentCommit.value?.id, () => {
             <!-- 按提交分组显示消息 -->
             <template v-for="(group, groupIndex) in groupedMessages" :key="groupIndex">
               <!-- 提交分隔线 -->
-              <div 
-                v-if="group.commitOrder" 
+              <div
+                v-if="group.commitOrder"
                 class="commit-separator"
                 @click="jumpToCommitOrder(group.commitOrder)"
                 :title="`跳转到第 ${group.commitOrder} 帧`"
@@ -1071,12 +1126,12 @@ watch(() => player.currentCommit.value?.id, () => {
                 </span>
                 <span class="separator-line"></span>
               </div>
-              
+
               <!-- 该组的消息 -->
-              <div 
-                v-for="msg in group.messages" 
-                :key="msg.id" 
-                class="chat-message" 
+              <div
+                v-for="msg in group.messages"
+                :key="msg.id"
+                class="chat-message"
                 :class="[`chat-message--${msg.role}`]"
               >
                 <div class="message-avatar">
@@ -1164,10 +1219,10 @@ watch(() => player.currentCommit.value?.id, () => {
    ===================================================== */
 
 /* --- Base Layout --- */
-.player-page { 
-  height: 100vh; 
-  display: flex; 
-  flex-direction: column; 
+.player-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: linear-gradient(180deg, var(--color-film-darker) 0%, var(--color-film-dark) 100%);
   position: relative;
   overflow: hidden;
@@ -1185,10 +1240,10 @@ watch(() => player.currentCommit.value?.id, () => {
 }
 
 /* --- Header: Projection Room Status Bar --- */
-.player-header { 
-  display: flex; 
-  align-items: center; 
-  justify-content: space-between; 
+.player-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: var(--spacing-sm) var(--spacing-xl);
   background: linear-gradient(180deg, rgba(26, 26, 46, 0.98) 0%, rgba(15, 15, 26, 0.95) 100%);
   border-bottom: 2px solid var(--color-film-border);
@@ -1211,16 +1266,42 @@ watch(() => player.currentCommit.value?.id, () => {
 .player-header::before { left: 12px; }
 .player-header::after { right: 12px; }
 
-.header-left, .header-right { 
-  display: flex; 
-  align-items: center; 
-  gap: var(--spacing-md); 
+.header-left, .header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
   z-index: 1;
+  flex-shrink: 0;
 }
 
-.file-info { 
-  display: flex; 
-  align-items: center; 
+.header-left {
+  flex: 0 0 auto;
+  max-width: 40%;
+}
+
+.header-right {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tracking-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 4px;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
   gap: var(--spacing-sm);
   padding: 6px 16px;
   background: rgba(246, 185, 59, 0.08);
@@ -1228,14 +1309,14 @@ watch(() => player.currentCommit.value?.id, () => {
   border-radius: var(--radius-sm);
 }
 
-.file-icon { 
-  color: var(--color-amber); 
+.file-icon {
+  color: var(--color-amber);
   font-size: 16px;
 }
 
-.file-path { 
-  font-family: var(--font-display); 
-  font-size: 0.95rem; 
+.file-path {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
   font-weight: 500;
   color: var(--color-projector-light);
   letter-spacing: 0.02em;
@@ -1246,11 +1327,13 @@ watch(() => player.currentCommit.value?.id, () => {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 0;
+  pointer-events: none;
 }
 
-.commit-info { 
-  display: flex; 
-  align-items: center; 
+.commit-info {
+  display: flex;
+  align-items: center;
   gap: var(--spacing-md);
   padding: 8px 20px;
   background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
@@ -1259,7 +1342,7 @@ watch(() => player.currentCommit.value?.id, () => {
   box-shadow: var(--shadow-projector), inset 0 1px 0 rgba(255,255,255,0.05);
 }
 
-.commit-order { 
+.commit-order {
   font-family: var(--font-display);
   font-size: 1.1rem;
   font-weight: 600;
@@ -1268,8 +1351,8 @@ watch(() => player.currentCommit.value?.id, () => {
   text-shadow: 0 0 20px var(--color-amber-glow);
 }
 
-.commit-hash { 
-  font-family: var(--font-code); 
+.commit-hash {
+  font-family: var(--font-code);
   font-size: 0.85rem;
   color: var(--text-muted);
   padding-left: var(--spacing-md);
@@ -1279,24 +1362,24 @@ watch(() => player.currentCommit.value?.id, () => {
 .tracking-mode-toggle { margin-right: 8px; }
 
 /* --- Main Content Area --- */
-.player-main { 
-  flex: 1; 
-  display: flex; 
+.player-main {
+  flex: 1;
+  display: flex;
   overflow: hidden;
   position: relative;
   z-index: 1;
 }
 
-.code-section { 
-  flex: 1; 
-  display: flex; 
-  flex-direction: column; 
+.code-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   position: relative;
 }
 
 /* Commit Panel - Film Slate Style */
-.commit-panel { 
+.commit-panel {
   padding: var(--spacing-md) var(--spacing-xl);
   background: linear-gradient(90deg, rgba(26, 26, 46, 0.95) 0%, rgba(42, 42, 62, 0.9) 50%, rgba(26, 26, 46, 0.95) 100%);
   border-bottom: 1px solid var(--color-film-border);
@@ -1313,26 +1396,26 @@ watch(() => player.currentCommit.value?.id, () => {
   background: var(--color-amber);
 }
 
-.commit-message { 
+.commit-message {
   font-family: var(--font-display);
-  font-size: 1.15rem; 
+  font-size: 1.15rem;
   font-weight: 600;
   color: var(--color-projector-light);
   margin-bottom: var(--spacing-xs);
   letter-spacing: 0.01em;
 }
 
-.commit-meta { 
-  display: flex; 
-  gap: var(--spacing-xl); 
-  font-size: 0.85rem; 
+.commit-meta {
+  display: flex;
+  gap: var(--spacing-xl);
+  font-size: 0.85rem;
   color: var(--text-muted);
   font-family: var(--font-code);
 }
 
-.commit-meta > span { 
-  display: flex; 
-  align-items: center; 
+.commit-meta > span {
+  display: flex;
+  align-items: center;
   gap: 6px;
 }
 
@@ -1340,9 +1423,9 @@ watch(() => player.currentCommit.value?.id, () => {
 .deletions { color: #f87171 !important; font-weight: 600; }
 
 /* --- Code Viewer: The Screen --- */
-.code-viewers { 
-  flex: 1; 
-  display: flex; 
+.code-viewers {
+  flex: 1;
+  display: flex;
   overflow: hidden;
   position: relative;
 }
@@ -1357,7 +1440,7 @@ watch(() => player.currentCommit.value?.id, () => {
   z-index: 5;
 }
 
-.code-viewers--split { 
+.code-viewers--split {
   gap: 0;
 }
 
@@ -1370,7 +1453,7 @@ watch(() => player.currentCommit.value?.id, () => {
   bottom: 0;
   width: 20px;
   transform: translateX(-50%);
-  background: 
+  background:
     repeating-linear-gradient(
       180deg,
       transparent 0px,
@@ -1383,14 +1466,14 @@ watch(() => player.currentCommit.value?.id, () => {
   z-index: 10;
 }
 
-.code-viewers--split .code-viewer { 
+.code-viewers--split .code-viewer {
   flex: 1;
   position: relative;
 }
 
-.code-viewer { 
-  flex: 1; 
-  overflow: auto; 
+.code-viewer {
+  flex: 1;
+  overflow: auto;
   background: var(--code-bg);
   position: relative;
 }
@@ -1413,33 +1496,33 @@ watch(() => player.currentCommit.value?.id, () => {
 .code-viewer--previous .code-viewer-label { color: #f87171; }
 .code-viewer--current .code-viewer-label { color: var(--color-amber); }
 
-.code-content { 
-  font-family: var(--font-code); 
-  font-size: 13px; 
-  line-height: 1.7; 
+.code-content {
+  font-family: var(--font-code);
+  font-size: 13px;
+  line-height: 1.7;
   padding: var(--spacing-md) 0;
 }
 
-.code-line { 
-  display: flex; 
-  min-height: 24px; 
+.code-line {
+  display: flex;
+  min-height: 24px;
   padding: 0 var(--spacing-xl);
   transition: background-color 0.2s ease;
 }
 
-.code-line:hover { 
+.code-line:hover {
   background: rgba(246, 185, 59, 0.05);
 }
 
 /* Changed lines with amber glow */
-.code-line--added { 
+.code-line--added {
   background: rgba(246, 185, 59, 0.12);
   border-left: 3px solid var(--color-amber);
   animation: amber-pulse 2s ease-out;
 }
 
-.code-line--added .line-number { 
-  color: var(--color-amber); 
+.code-line--added .line-number {
+  color: var(--color-amber);
   font-weight: 600;
 }
 
@@ -1455,8 +1538,8 @@ watch(() => player.currentCommit.value?.id, () => {
   animation: delete-pulse 2s ease-out;
 }
 
-.code-line--deleted .line-number { 
-  color: #f87171; 
+.code-line--deleted .line-number {
+  color: #f87171;
   font-weight: 600;
 }
 
@@ -1466,26 +1549,26 @@ watch(() => player.currentCommit.value?.id, () => {
   100% { background: rgba(248, 113, 113, 0.12); }
 }
 
-.line-number { 
-  flex-shrink: 0; 
-  width: 55px; 
-  padding-right: var(--spacing-md); 
-  text-align: right; 
-  color: var(--text-muted); 
+.line-number {
+  flex-shrink: 0;
+  width: 55px;
+  padding-right: var(--spacing-md);
+  text-align: right;
+  color: var(--text-muted);
   user-select: none;
   font-size: 12px;
   opacity: 0.7;
 }
 
-.line-content { 
-  flex: 1; 
+.line-content {
+  flex: 1;
   white-space: pre;
 }
 
 /* --- AI Chat: Director's Notes --- */
-.chat-section { 
-  width: 420px; 
-  display: flex; 
+.chat-section {
+  width: 420px;
+  display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, #0f0f1a 0%, #0a0a12 100%);
   border-left: 2px solid var(--color-amber);
@@ -1503,18 +1586,18 @@ watch(() => player.currentCommit.value?.id, () => {
   pointer-events: none;
 }
 
-.chat-header { 
-  display: flex; 
-  justify-content: space-between; 
-  align-items: center; 
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: var(--spacing-md) var(--spacing-lg);
   background: linear-gradient(180deg, rgba(246, 185, 59, 0.1) 0%, transparent 100%);
   border-bottom: 1px solid var(--color-film-border);
 }
 
-.chat-header h3 { 
-  display: flex; 
-  align-items: center; 
+.chat-header h3 {
+  display: flex;
+  align-items: center;
   gap: var(--spacing-sm);
   font-family: var(--font-display);
   font-size: 1rem;
@@ -1525,14 +1608,14 @@ watch(() => player.currentCommit.value?.id, () => {
   text-transform: uppercase;
 }
 
-.chat-messages { 
-  flex: 1; 
-  overflow-y: auto; 
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
   padding: var(--spacing-md);
 }
 
-.chat-empty { 
-  text-align: center; 
+.chat-empty {
+  text-align: center;
   padding: var(--spacing-2xl) var(--spacing-lg);
   color: var(--text-muted);
 }
@@ -1544,59 +1627,59 @@ watch(() => player.currentCommit.value?.id, () => {
   margin-bottom: var(--spacing-lg);
 }
 
-.suggestions { 
-  display: flex; 
-  flex-direction: column; 
+.suggestions {
+  display: flex;
+  flex-direction: column;
   gap: var(--spacing-sm);
 }
 
-.chat-message { 
-  display: flex; 
-  gap: var(--spacing-sm); 
+.chat-message {
+  display: flex;
+  gap: var(--spacing-sm);
   margin-bottom: var(--spacing-md);
 }
 
 .chat-message--user { flex-direction: row-reverse; }
 
-.message-avatar { 
-  width: 32px; 
-  height: 32px; 
-  border-radius: 50%; 
-  display: flex; 
-  align-items: center; 
-  justify-content: center; 
+.message-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   font-size: 14px;
   border: 2px solid transparent;
 }
 
-.chat-message--user .message-avatar { 
+.chat-message--user .message-avatar {
   background: var(--color-amber);
   border-color: rgba(246, 185, 59, 0.3);
   color: var(--color-film-dark);
 }
 
-.chat-message--assistant .message-avatar { 
+.chat-message--assistant .message-avatar {
   background: linear-gradient(135deg, #2a2a3e, #3a3a4e);
   border-color: var(--color-film-border);
   color: var(--color-amber);
 }
 
-.message-content { 
-  max-width: 85%; 
+.message-content {
+  max-width: 85%;
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-md);
   font-size: 0.9rem;
   line-height: 1.6;
 }
 
-.chat-message--user .message-content { 
+.chat-message--user .message-content {
   background: var(--color-amber);
   color: var(--color-film-dark);
   font-weight: 500;
 }
 
-.chat-message--assistant .message-content { 
+.chat-message--assistant .message-content {
   background: linear-gradient(180deg, #1a1a28 0%, #12121a 100%);
   border: 1px solid rgba(246, 185, 59, 0.25);
   color: #e8e8f0;
@@ -1637,14 +1720,14 @@ watch(() => player.currentCommit.value?.id, () => {
   color: #e0e0e0;
 }
 
-.chat-input { 
+.chat-input {
   padding: var(--spacing-md);
   border-top: 1px solid var(--color-film-border);
   background: rgba(26, 26, 46, 0.5);
 }
 
 /* --- Footer: Film Strip Control Deck --- */
-.player-footer { 
+.player-footer {
   padding: var(--spacing-md) var(--spacing-xl);
   background: linear-gradient(180deg, rgba(26, 26, 46, 0.98) 0%, rgba(15, 15, 26, 1) 100%);
   border-top: 2px solid var(--color-film-border);
@@ -1686,7 +1769,7 @@ watch(() => player.currentCommit.value?.id, () => {
 }
 
 /* Film Strip Timeline */
-.timeline-slider { 
+.timeline-slider {
   flex: 1;
   position: relative;
   padding: 8px 20px;
@@ -1714,10 +1797,10 @@ watch(() => player.currentCommit.value?.id, () => {
 
 /* Slider styling */
 .timeline-slider :deep(.el-slider__runway) {
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    rgba(246, 185, 59, 0.2) 10%, 
-    rgba(246, 185, 59, 0.2) 90%, 
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(246, 185, 59, 0.2) 10%,
+    rgba(246, 185, 59, 0.2) 90%,
     transparent 100%
   ) !important;
   height: 4px;
@@ -1738,9 +1821,9 @@ watch(() => player.currentCommit.value?.id, () => {
 }
 
 /* Player Controls - Compact Inline */
-.player-controls { 
-  display: flex; 
-  align-items: center; 
+.player-controls {
+  display: flex;
+  align-items: center;
   gap: var(--spacing-sm);
 }
 
@@ -1775,7 +1858,7 @@ watch(() => player.currentCommit.value?.id, () => {
   border-radius: 50% !important;
   background: linear-gradient(145deg, var(--color-amber) 0%, #E8A838 50%, #D4941F 100%) !important;
   border: 3px solid rgba(255, 255, 255, 0.2) !important;
-  box-shadow: 
+  box-shadow:
     0 0 30px var(--color-amber-glow),
     var(--shadow-mechanical),
     inset 0 2px 0 rgba(255, 255, 255, 0.3) !important;
@@ -1786,7 +1869,7 @@ watch(() => player.currentCommit.value?.id, () => {
 
 .play-button:hover {
   transform: translateY(-2px) !important;
-  box-shadow: 
+  box-shadow:
     0 0 40px rgba(246, 185, 59, 0.4),
     0 8px 25px rgba(0, 0, 0, 0.4),
     inset 0 2px 0 rgba(255, 255, 255, 0.3) !important;
@@ -1794,7 +1877,7 @@ watch(() => player.currentCommit.value?.id, () => {
 
 .play-button:active {
   transform: translateY(1px) !important;
-  box-shadow: 
+  box-shadow:
     0 0 20px var(--color-amber-glow),
     0 2px 10px rgba(0, 0, 0, 0.4),
     inset 0 2px 0 rgba(255, 255, 255, 0.3) !important;
@@ -1818,8 +1901,8 @@ watch(() => player.currentCommit.value?.id, () => {
 }
 
 /* Keyboard Shortcuts Hint */
-.shortcuts-hint { 
-  display: flex; 
+.shortcuts-hint {
+  display: flex;
   align-items: center;
   gap: var(--spacing-xs);
   font-size: 0.7rem;
@@ -1827,7 +1910,7 @@ watch(() => player.currentCommit.value?.id, () => {
   opacity: 0.6;
 }
 
-kbd { 
+kbd {
   padding: 3px 8px;
   background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
   border: 1px solid var(--color-film-border);
@@ -1839,14 +1922,14 @@ kbd {
 }
 
 /* --- Animations --- */
-.slide-right-enter-active, 
-.slide-right-leave-active { 
+.slide-right-enter-active,
+.slide-right-leave-active {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.slide-right-enter-from, 
-.slide-right-leave-to { 
-  transform: translateX(100%); 
+.slide-right-enter-from,
+.slide-right-leave-to {
+  transform: translateX(100%);
   opacity: 0;
 }
 
@@ -2057,27 +2140,27 @@ kbd {
 }
 
 /* --- Story Dialog --- */
-.story-content { 
+.story-content {
   min-height: 200px;
 }
 
-.story-text { 
-  line-height: 1.8; 
+.story-text {
+  line-height: 1.8;
   color: var(--text-primary);
   font-family: var(--font-display);
 }
 
-.story-text :deep(p) { 
+.story-text :deep(p) {
   margin-bottom: 1em;
 }
 
-.story-milestones { 
+.story-milestones {
   margin-top: var(--spacing-lg);
   padding-top: var(--spacing-lg);
   border-top: 1px solid var(--color-film-border);
 }
 
-.story-milestones h4 { 
+.story-milestones h4 {
   font-family: var(--font-display);
   margin-bottom: var(--spacing-md);
   font-size: 1rem;
@@ -2435,7 +2518,7 @@ kbd {
 }
 
 .player-page--neon::before {
-  background: 
+  background:
     radial-gradient(ellipse at 20% 20%, rgba(0, 255, 255, 0.03) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 80%, rgba(255, 0, 255, 0.03) 0%, transparent 50%);
   opacity: 1;
@@ -2954,7 +3037,1478 @@ kbd {
 .player-page--glassmorphism .style-selector :deep(.el-input__inner) {
   color: #fff !important;
 }
+
+/* =====================================================
+   SOFT UI STYLE - 柔和拟物风格 (Neumorphism)
+   Soft shadows, embossed elements, tactile interactions
+   ===================================================== */
+
+/* CSS Variables for Soft UI */
+.player-page--softui {
+  --softui-bg: #e4e9f0;
+  --softui-bg-dark: #dde2e9;
+  --softui-shadow-light: rgba(255, 255, 255, 0.8);
+  --softui-shadow-dark: rgba(163, 177, 198, 0.6);
+  --softui-shadow-raised: 6px 6px 12px var(--softui-shadow-dark), -6px -6px 12px var(--softui-shadow-light);
+  --softui-shadow-raised-sm: 4px 4px 8px var(--softui-shadow-dark), -4px -4px 8px var(--softui-shadow-light);
+  --softui-shadow-inset: inset 4px 4px 8px var(--softui-shadow-dark), inset -4px -4px 8px var(--softui-shadow-light);
+  --softui-shadow-inset-sm: inset 2px 2px 4px var(--softui-shadow-dark), inset -2px -2px 4px var(--softui-shadow-light);
+  --softui-text-primary: #4a5568;
+  --softui-text-secondary: #718096;
+  --softui-text-muted: #a0aec0;
+  --softui-accent: #667eea;
+  --softui-accent-light: rgba(102, 126, 234, 0.15);
+  --softui-success: #48bb78;
+  --softui-danger: #f56565;
+  --softui-radius: 16px;
+  --softui-radius-sm: 12px;
+  --softui-radius-lg: 24px;
+  --softui-transition: all 180ms ease-out;
+}
+
+/* Base Layout */
+.player-page--softui {
+  background: linear-gradient(145deg, #e8edf5 0%, #dce1e8 100%);
+}
+
+.player-page--softui::before {
+  display: none;
+}
+
+/* Header Bar */
+.player-page--softui .player-header {
+  background: var(--softui-bg);
+  border-bottom: none;
+  box-shadow: var(--softui-shadow-raised-sm);
+  height: 60px;
+  margin: 12px 12px 0 12px;
+  border-radius: var(--softui-radius);
+  z-index: 20;
+}
+
+.player-page--softui .player-header::before,
+.player-page--softui .player-header::after {
+  display: none;
+}
+
+.player-page--softui .file-info {
+  background: var(--softui-bg);
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui .file-icon {
+  color: var(--softui-accent);
+}
+
+.player-page--softui .file-path {
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--softui-text-primary);
+  letter-spacing: 0;
+}
+
+/* Frame Counter - Capsule Style */
+.player-page--softui .commit-info {
+  background: var(--softui-bg);
+  border: none;
+  border-radius: var(--softui-radius-lg);
+  box-shadow: var(--softui-shadow-raised-sm);
+  padding: 8px 20px;
+}
+
+.player-page--softui .commit-order {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--softui-accent);
+  text-shadow: none;
+}
+
+.player-page--softui .commit-hash {
+  color: var(--softui-text-muted);
+  border-left: 1px solid var(--softui-text-muted);
+}
+
+/* Main Content Area */
+.player-page--softui .player-main {
+  padding: 16px;
+  gap: 16px;
+}
+
+.player-page--softui .code-section {
+  background: var(--softui-bg);
+  border-radius: var(--softui-radius);
+  box-shadow: var(--softui-shadow-raised);
+  overflow: hidden;
+}
+
+/* Commit Panel */
+.player-page--softui .commit-panel {
+  background: var(--softui-bg);
+  border-bottom: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+  box-shadow: var(--softui-shadow-inset-sm);
+  margin: 12px;
+  border-radius: var(--softui-radius-sm);
+}
+
+.player-page--softui .commit-panel::before {
+  display: none;
+}
+
+.player-page--softui .commit-message {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--softui-text-primary);
+  letter-spacing: 0;
+}
+
+.player-page--softui .commit-meta {
+  font-family: inherit;
+  color: var(--softui-text-secondary);
+}
+
+.player-page--softui .additions {
+  color: var(--softui-success) !important;
+  font-weight: 600;
+}
+
+.player-page--softui .deletions {
+  color: var(--softui-danger) !important;
+  font-weight: 600;
+}
+
+/* Code Viewer */
+.player-page--softui .code-viewers {
+  margin: 0 12px 12px 12px;
+  border-radius: var(--softui-radius-sm);
+  background: var(--softui-bg-dark);
+  box-shadow: var(--softui-shadow-inset);
+  overflow: hidden;
+}
+
+.player-page--softui .code-viewers::after {
+  display: none;
+}
+
+.player-page--softui .code-viewers--split::before {
+  display: none;
+}
+
+.player-page--softui .code-viewers--split {
+  gap: 2px;
+  background: var(--softui-bg-dark);
+}
+
+.player-page--softui .code-viewer {
+  background: transparent;
+}
+
+.player-page--softui .code-viewer-label {
+  background: rgba(255, 255, 255, 0.5);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--softui-text-muted);
+  border-bottom: none;
+  border-radius: var(--softui-radius-sm) var(--softui-radius-sm) 0 0;
+}
+
+.player-page--softui .code-viewer--previous .code-viewer-label {
+  color: var(--softui-danger);
+}
+
+.player-page--softui .code-viewer--current .code-viewer-label {
+  color: var(--softui-success);
+}
+
+.player-page--softui .code-content {
+  font-family: var(--font-code);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.player-page--softui .code-line {
+  transition: background-color 0.2s ease;
+}
+
+.player-page--softui .code-line:hover {
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.player-page--softui .code-line--added {
+  background: rgba(72, 187, 120, 0.15);
+  border-left: 3px solid var(--softui-success);
+  animation: softui-pulse-green 2s ease-out;
+}
+
+.player-page--softui .code-line--added .line-number {
+  color: var(--softui-success);
+  font-weight: 600;
+}
+
+@keyframes softui-pulse-green {
+  0% { background: rgba(72, 187, 120, 0.35); }
+  50% { background: rgba(72, 187, 120, 0.22); }
+  100% { background: rgba(72, 187, 120, 0.15); }
+}
+
+.player-page--softui .code-line--deleted {
+  background: rgba(245, 101, 101, 0.15);
+  border-left: 3px solid var(--softui-danger);
+  animation: softui-pulse-red 2s ease-out;
+}
+
+.player-page--softui .code-line--deleted .line-number {
+  color: var(--softui-danger);
+  font-weight: 600;
+}
+
+@keyframes softui-pulse-red {
+  0% { background: rgba(245, 101, 101, 0.35); }
+  50% { background: rgba(245, 101, 101, 0.22); }
+  100% { background: rgba(245, 101, 101, 0.15); }
+}
+
+.player-page--softui .line-number {
+  color: var(--softui-text-muted);
+}
+
+/* Chat Section */
+.player-page--softui .chat-section {
+  background: var(--softui-bg);
+  border-left: none;
+  border-radius: var(--softui-radius);
+  box-shadow: var(--softui-shadow-raised);
+  margin: 16px 16px 16px 0;
+  width: 400px;
+}
+
+.player-page--softui .chat-section::before {
+  display: none;
+}
+
+.player-page--softui .chat-header {
+  background: transparent;
+  border-bottom: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.player-page--softui .chat-header h3 {
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--softui-text-primary);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.player-page--softui .chat-header h3 .el-icon {
+  color: var(--softui-accent);
+}
+
+.player-page--softui .chat-messages {
+  padding: var(--spacing-md);
+}
+
+.player-page--softui .chat-empty {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui .chat-empty p {
+  font-family: inherit;
+  font-style: normal;
+}
+
+.player-page--softui .suggestions :deep(.el-button) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  color: var(--softui-text-secondary) !important;
+  transition: var(--softui-transition);
+}
+
+.player-page--softui .suggestions :deep(.el-button:hover) {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+  color: var(--softui-accent) !important;
+}
+
+.player-page--softui .suggestions :deep(.el-button:active) {
+  box-shadow: var(--softui-shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.player-page--softui .chat-message--user .message-avatar {
+  background: linear-gradient(135deg, var(--softui-accent), #764ba2);
+  border: none;
+  box-shadow: var(--softui-shadow-raised-sm);
+}
+
+.player-page--softui .chat-message--assistant .message-avatar {
+  background: var(--softui-bg);
+  border: none;
+  color: var(--softui-accent);
+  box-shadow: var(--softui-shadow-raised-sm);
+}
+
+.player-page--softui .chat-message--user .message-content {
+  background: linear-gradient(135deg, var(--softui-accent), #764ba2);
+  color: #fff;
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-raised-sm);
+}
+
+.player-page--softui .chat-message--assistant .message-content {
+  background: var(--softui-bg);
+  border: none;
+  color: var(--softui-text-primary);
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui .chat-message--assistant .message-content :deep(p) {
+  color: var(--softui-text-primary);
+}
+
+.player-page--softui .chat-message--assistant .message-content :deep(code) {
+  background: var(--softui-accent-light);
+  color: var(--softui-accent);
+  border-radius: 6px;
+}
+
+.player-page--softui .chat-message--assistant .message-content :deep(pre) {
+  background: rgba(0, 0, 0, 0.05);
+  border: none;
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui .chat-input {
+  background: transparent;
+  border-top: none;
+  padding: var(--spacing-md);
+}
+
+.player-page--softui .chat-input :deep(.el-input__wrapper) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-inset-sm) !important;
+}
+
+.player-page--softui .chat-input :deep(.el-input__inner) {
+  color: var(--softui-text-primary) !important;
+}
+
+.player-page--softui .chat-input :deep(.el-input-group__append) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: 0 var(--softui-radius-sm) var(--softui-radius-sm) 0 !important;
+  box-shadow: var(--softui-shadow-raised-sm) !important;
+}
+
+.player-page--softui .chat-input :deep(.el-input-group__append .el-button) {
+  background: transparent !important;
+  border: none !important;
+  color: var(--softui-accent) !important;
+}
+
+/* Footer Controls */
+.player-page--softui .player-footer {
+  background: var(--softui-bg);
+  border-top: none;
+  margin: 0 12px 12px 12px;
+  border-radius: var(--softui-radius);
+  box-shadow: var(--softui-shadow-raised);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.player-page--softui .progress-current {
+  color: var(--softui-accent);
+  font-weight: 700;
+  text-shadow: none;
+}
+
+.player-page--softui .progress-separator,
+.player-page--softui .progress-total {
+  color: var(--softui-text-muted);
+}
+
+/* Timeline Slider */
+.player-page--softui .timeline-slider {
+  background: var(--softui-bg);
+  border: none;
+  border-radius: var(--softui-radius-lg);
+  box-shadow: var(--softui-shadow-inset);
+  padding: 12px 20px;
+}
+
+.player-page--softui .timeline-slider::before,
+.player-page--softui .timeline-slider::after {
+  display: none;
+}
+
+.player-page--softui .timeline-slider :deep(.el-slider__runway) {
+  background: transparent !important;
+  height: 6px;
+  border-radius: 3px;
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui .timeline-slider :deep(.el-slider__bar) {
+  background: linear-gradient(90deg, var(--softui-accent), #764ba2) !important;
+  border-radius: 3px;
+  box-shadow: none;
+}
+
+.player-page--softui .timeline-slider :deep(.el-slider__button) {
+  width: 18px;
+  height: 18px;
+  background: var(--softui-bg);
+  border: none;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui .timeline-slider :deep(.el-slider__button:hover) {
+  transform: scale(1.15);
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+}
+
+/* Player Controls */
+.player-page--softui .player-controls :deep(.el-button-group) {
+  gap: 8px;
+}
+
+.player-page--softui .player-controls :deep(.el-button) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  color: var(--softui-text-secondary) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui .player-controls :deep(.el-button:hover:not(:disabled)) {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+  color: var(--softui-accent) !important;
+}
+
+.player-page--softui .player-controls :deep(.el-button:active:not(:disabled)) {
+  box-shadow: var(--softui-shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.player-page--softui .player-controls :deep(.el-button:disabled) {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+/* Play Button - Prominent */
+.player-page--softui .play-button {
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, var(--softui-accent) 0%, #764ba2 100%) !important;
+  border: none !important;
+  box-shadow:
+    8px 8px 16px var(--softui-shadow-dark),
+    -8px -8px 16px var(--softui-shadow-light),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2) !important;
+  color: #fff !important;
+  font-size: 20px !important;
+  transition: var(--softui-transition) !important;
+}
+
+.player-page--softui .play-button:hover {
+  transform: translateY(-3px) !important;
+  box-shadow:
+    12px 12px 24px var(--softui-shadow-dark),
+    -12px -12px 24px var(--softui-shadow-light),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+.player-page--softui .play-button:active {
+  transform: translateY(0) !important;
+  box-shadow:
+    inset 4px 4px 8px rgba(0, 0, 0, 0.2),
+    inset -2px -2px 6px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Speed Selector */
+.player-page--softui .player-controls :deep(.el-select .el-input__wrapper) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-inset-sm) !important;
+}
+
+.player-page--softui .player-controls :deep(.el-select .el-input__inner) {
+  font-family: inherit !important;
+  color: var(--softui-text-primary) !important;
+  font-weight: 500;
+}
+
+/* Keyboard Hints */
+.player-page--softui .shortcuts-hint {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui kbd {
+  background: var(--softui-bg);
+  border: none;
+  border-radius: 8px;
+  color: var(--softui-text-secondary);
+  box-shadow: var(--softui-shadow-raised-sm);
+  font-size: 0.7rem;
+  padding: 4px 10px;
+}
+
+/* Header Buttons */
+.player-page--softui .player-header :deep(.el-button) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  color: var(--softui-text-secondary) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui .player-header :deep(.el-button:hover) {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+  color: var(--softui-accent) !important;
+}
+
+.player-page--softui .player-header :deep(.el-button:active) {
+  box-shadow: var(--softui-shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.player-page--softui .player-header :deep(.el-button--primary) {
+  background: linear-gradient(135deg, var(--softui-accent), #764ba2) !important;
+  color: #fff !important;
+}
+
+/* Button Groups */
+.player-page--softui .player-header :deep(.el-button-group) {
+  box-shadow: var(--softui-shadow-raised-sm);
+  border-radius: var(--softui-radius-sm);
+  overflow: hidden;
+}
+
+.player-page--softui .player-header :deep(.el-button-group .el-button) {
+  box-shadow: none;
+  border-radius: 0 !important;
+}
+
+.player-page--softui .player-header :deep(.el-button-group .el-button:first-child) {
+  border-radius: var(--softui-radius-sm) 0 0 var(--softui-radius-sm) !important;
+}
+
+.player-page--softui .player-header :deep(.el-button-group .el-button:last-child) {
+  border-radius: 0 var(--softui-radius-sm) var(--softui-radius-sm) 0 !important;
+}
+
+.player-page--softui .player-header :deep(.el-button-group .el-button:hover) {
+  transform: none;
+  background: rgba(102, 126, 234, 0.1) !important;
+}
+
+.player-page--softui .player-header :deep(.el-button-group .el-button--primary:hover) {
+  background: linear-gradient(135deg, #5a72d6, #6b42a1) !important;
+}
+
+/* Selects */
+.player-page--softui .style-selector :deep(.el-input__wrapper) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-inset-sm) !important;
+}
+
+.player-page--softui .style-selector :deep(.el-input__inner) {
+  color: var(--softui-text-primary) !important;
+}
+
+/* AI Analysis */
+.player-page--softui .ai-analysis-row {
+  border-top-color: rgba(0, 0, 0, 0.05);
+}
+
+.player-page--softui .ai-analysis-btn {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  color: var(--softui-accent) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui .ai-analysis-btn:hover {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+}
+
+.player-page--softui .quick-summary {
+  color: var(--softui-text-secondary);
+}
+
+.player-page--softui .quick-summary:hover {
+  color: var(--softui-accent);
+}
+
+/* Commit Separator */
+.player-page--softui .commit-separator {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui .separator-line {
+  background: linear-gradient(to right, transparent, var(--softui-text-muted), transparent);
+  opacity: 0.3;
+}
+
+.player-page--softui .separator-content {
+  background: var(--softui-bg);
+  border: none;
+  border-radius: var(--softui-radius-lg);
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui .separator-content:hover {
+  box-shadow: 6px 6px 12px var(--softui-shadow-dark), -6px -6px 12px var(--softui-shadow-light);
+}
+
+.player-page--softui .separator-badge {
+  color: var(--softui-accent);
+}
+
+.player-page--softui .separator-hash {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui .separator-message {
+  color: var(--softui-text-secondary);
+}
+
+/* Loading animation */
+.player-page--softui .loading-dots span {
+  background: var(--softui-accent);
+}
+
+.player-page--softui .streaming-cursor {
+  color: var(--softui-accent);
+}
+
+/* Remove playing animations */
+.player-page--softui.is-playing .timeline-slider::before,
+.player-page--softui.is-playing .timeline-slider::after {
+  animation: none;
+}
+
+/* Analysis Popover */
+.player-page--softui .analysis-header {
+  background: var(--softui-accent-light);
+  border-radius: var(--softui-radius-sm) var(--softui-radius-sm) 0 0;
+}
+
+.player-page--softui .analysis-title {
+  color: var(--softui-accent);
+}
+
+.player-page--softui .analysis-footer {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 0 0 var(--softui-radius-sm) var(--softui-radius-sm);
+}
+
+.player-page--softui .score-stars {
+  color: var(--softui-accent);
+}
+
+/* Story Dialog */
+.player-page--softui .story-milestones {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.player-page--softui .story-milestones h4 {
+  color: var(--softui-accent);
+}
+
+/* =====================================================
+   SOFT UI DARK STYLE - 柔和深色拟物风格
+   Dark neumorphism with inverted shadows
+   ===================================================== */
+
+/* CSS Variables for Soft UI Dark */
+.player-page--softui-dark {
+  --softui-bg: #2d3748;
+  --softui-bg-dark: #1a202c;
+  --softui-bg-light: #3d4a5c;
+  --softui-shadow-light: rgba(255, 255, 255, 0.05);
+  --softui-shadow-dark: rgba(0, 0, 0, 0.5);
+  --softui-shadow-raised: 6px 6px 12px var(--softui-shadow-dark), -6px -6px 12px var(--softui-shadow-light);
+  --softui-shadow-raised-sm: 4px 4px 8px var(--softui-shadow-dark), -4px -4px 8px var(--softui-shadow-light);
+  --softui-shadow-inset: inset 4px 4px 8px var(--softui-shadow-dark), inset -4px -4px 8px var(--softui-shadow-light);
+  --softui-shadow-inset-sm: inset 2px 2px 4px var(--softui-shadow-dark), inset -2px -2px 4px var(--softui-shadow-light);
+  --softui-text-primary: #e2e8f0;
+  --softui-text-secondary: #a0aec0;
+  --softui-text-muted: #718096;
+  --softui-accent: #90cdf4;
+  --softui-accent-secondary: #b794f4;
+  --softui-accent-light: rgba(144, 205, 244, 0.15);
+  --softui-success: #68d391;
+  --softui-danger: #fc8181;
+  --softui-radius: 16px;
+  --softui-radius-sm: 12px;
+  --softui-radius-lg: 24px;
+  --softui-transition: all 180ms ease-out;
+}
+
+/* Base Layout */
+.player-page--softui-dark {
+  background: linear-gradient(145deg, #2d3748 0%, #1a202c 100%);
+}
+
+.player-page--softui-dark::before {
+  display: none;
+}
+
+/* Header Bar */
+.player-page--softui-dark .player-header {
+  background: var(--softui-bg);
+  border-bottom: none;
+  box-shadow: var(--softui-shadow-raised-sm);
+  height: 60px;
+  margin: 12px 12px 0 12px;
+  border-radius: var(--softui-radius);
+  z-index: 20;
+}
+
+.player-page--softui-dark .player-header::before,
+.player-page--softui-dark .player-header::after {
+  display: none;
+}
+
+.player-page--softui-dark .file-info {
+  background: var(--softui-bg);
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui-dark .file-icon {
+  color: var(--softui-accent);
+}
+
+.player-page--softui-dark .file-path {
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--softui-text-primary);
+  letter-spacing: 0;
+}
+
+/* Frame Counter - Capsule Style */
+.player-page--softui-dark .commit-info {
+  background: var(--softui-bg);
+  border: none;
+  border-radius: var(--softui-radius-lg);
+  box-shadow: var(--softui-shadow-raised-sm);
+  padding: 8px 20px;
+}
+
+.player-page--softui-dark .commit-order {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--softui-accent);
+  text-shadow: none;
+}
+
+.player-page--softui-dark .commit-hash {
+  color: var(--softui-text-muted);
+  border-left: 1px solid var(--softui-text-muted);
+}
+
+/* Main Content Area */
+.player-page--softui-dark .player-main {
+  padding: 16px;
+  gap: 16px;
+}
+
+.player-page--softui-dark .code-section {
+  background: var(--softui-bg);
+  border-radius: var(--softui-radius);
+  box-shadow: var(--softui-shadow-raised);
+  overflow: hidden;
+}
+
+/* Commit Panel */
+.player-page--softui-dark .commit-panel {
+  background: var(--softui-bg);
+  border-bottom: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+  box-shadow: var(--softui-shadow-inset-sm);
+  margin: 12px;
+  border-radius: var(--softui-radius-sm);
+}
+
+.player-page--softui-dark .commit-panel::before {
+  display: none;
+}
+
+.player-page--softui-dark .commit-message {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--softui-text-primary);
+  letter-spacing: 0;
+}
+
+.player-page--softui-dark .commit-meta {
+  font-family: inherit;
+  color: var(--softui-text-secondary);
+}
+
+.player-page--softui-dark .additions {
+  color: var(--softui-success) !important;
+  font-weight: 600;
+}
+
+.player-page--softui-dark .deletions {
+  color: var(--softui-danger) !important;
+  font-weight: 600;
+}
+
+/* Code Viewer */
+.player-page--softui-dark .code-viewers {
+  margin: 0 12px 12px 12px;
+  border-radius: var(--softui-radius-sm);
+  background: var(--softui-bg-light);
+  box-shadow: var(--softui-shadow-inset);
+  overflow: hidden;
+}
+
+.player-page--softui-dark .code-viewers::after {
+  display: none;
+}
+
+.player-page--softui-dark .code-viewers--split::before {
+  display: none;
+}
+
+.player-page--softui-dark .code-viewers--split {
+  gap: 2px;
+  background: var(--softui-bg);
+}
+
+.player-page--softui-dark .code-viewer {
+  background: transparent;
+}
+
+.player-page--softui-dark .code-viewer-label {
+  background: rgba(255, 255, 255, 0.03);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--softui-text-muted);
+  border-bottom: none;
+  border-radius: var(--softui-radius-sm) var(--softui-radius-sm) 0 0;
+}
+
+.player-page--softui-dark .code-viewer--previous .code-viewer-label {
+  color: var(--softui-danger);
+}
+
+.player-page--softui-dark .code-viewer--current .code-viewer-label {
+  color: var(--softui-success);
+}
+
+.player-page--softui-dark .code-content {
+  font-family: var(--font-code);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--softui-text-primary);
+}
+
+.player-page--softui-dark .line-content {
+  color: #e2e8f0;
+}
+
+/* Syntax highlighting overrides for dark mode */
+.player-page--softui-dark .code-content .hljs {
+  color: #e2e8f0;
+}
+
+.player-page--softui-dark .code-content .hljs-keyword,
+.player-page--softui-dark .code-content .hljs-selector-tag,
+.player-page--softui-dark .code-content .hljs-built_in {
+  color: #90cdf4;
+}
+
+.player-page--softui-dark .code-content .hljs-string,
+.player-page--softui-dark .code-content .hljs-attr {
+  color: #68d391;
+}
+
+.player-page--softui-dark .code-content .hljs-number {
+  color: #fbd38d;
+}
+
+.player-page--softui-dark .code-content .hljs-comment {
+  color: #718096;
+}
+
+.player-page--softui-dark .code-content .hljs-function,
+.player-page--softui-dark .code-content .hljs-title {
+  color: #b794f4;
+}
+
+.player-page--softui-dark .code-line {
+  transition: background-color 0.2s ease;
+}
+
+.player-page--softui-dark .code-line:hover {
+  background: rgba(144, 205, 244, 0.06);
+}
+
+.player-page--softui-dark .code-line--added {
+  background: rgba(104, 211, 145, 0.12);
+  border-left: 3px solid var(--softui-success);
+  animation: softui-dark-pulse-green 2s ease-out;
+}
+
+.player-page--softui-dark .code-line--added .line-number {
+  color: var(--softui-success);
+  font-weight: 600;
+}
+
+@keyframes softui-dark-pulse-green {
+  0% { background: rgba(104, 211, 145, 0.3); }
+  50% { background: rgba(104, 211, 145, 0.18); }
+  100% { background: rgba(104, 211, 145, 0.12); }
+}
+
+.player-page--softui-dark .code-line--deleted {
+  background: rgba(252, 129, 129, 0.12);
+  border-left: 3px solid var(--softui-danger);
+  animation: softui-dark-pulse-red 2s ease-out;
+}
+
+.player-page--softui-dark .code-line--deleted .line-number {
+  color: var(--softui-danger);
+  font-weight: 600;
+}
+
+@keyframes softui-dark-pulse-red {
+  0% { background: rgba(252, 129, 129, 0.3); }
+  50% { background: rgba(252, 129, 129, 0.18); }
+  100% { background: rgba(252, 129, 129, 0.12); }
+}
+
+.player-page--softui-dark .line-number {
+  color: var(--softui-text-muted);
+}
+
+/* Chat Section */
+.player-page--softui-dark .chat-section {
+  background: var(--softui-bg);
+  border-left: none;
+  border-radius: var(--softui-radius);
+  box-shadow: var(--softui-shadow-raised);
+  margin: 16px 16px 16px 0;
+  width: 400px;
+}
+
+.player-page--softui-dark .chat-section::before {
+  display: none;
+}
+
+.player-page--softui-dark .chat-header {
+  background: transparent;
+  border-bottom: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.player-page--softui-dark .chat-header h3 {
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--softui-text-primary);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.player-page--softui-dark .chat-header h3 .el-icon {
+  color: var(--softui-accent);
+}
+
+.player-page--softui-dark .chat-messages {
+  padding: var(--spacing-md);
+}
+
+.player-page--softui-dark .chat-empty {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui-dark .chat-empty p {
+  font-family: inherit;
+  font-style: normal;
+}
+
+.player-page--softui-dark .suggestions :deep(.el-button) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  color: var(--softui-text-secondary) !important;
+  transition: var(--softui-transition);
+}
+
+.player-page--softui-dark .suggestions :deep(.el-button:hover) {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+  color: var(--softui-accent) !important;
+}
+
+.player-page--softui-dark .suggestions :deep(.el-button:active) {
+  box-shadow: var(--softui-shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.player-page--softui-dark .chat-message--user .message-avatar {
+  background: linear-gradient(135deg, var(--softui-accent), var(--softui-accent-secondary));
+  border: none;
+  box-shadow: var(--softui-shadow-raised-sm);
+}
+
+.player-page--softui-dark .chat-message--assistant .message-avatar {
+  background: var(--softui-bg-light);
+  border: none;
+  color: var(--softui-accent);
+  box-shadow: var(--softui-shadow-raised-sm);
+}
+
+.player-page--softui-dark .chat-message--user .message-content {
+  background: linear-gradient(135deg, var(--softui-accent), var(--softui-accent-secondary));
+  color: #1a202c;
+  font-weight: 500;
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-raised-sm);
+}
+
+.player-page--softui-dark .chat-message--assistant .message-content {
+  background: var(--softui-bg-light);
+  border: none;
+  color: var(--softui-text-primary);
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui-dark .chat-message--assistant .message-content :deep(p) {
+  color: var(--softui-text-primary);
+}
+
+.player-page--softui-dark .chat-message--assistant .message-content :deep(code) {
+  background: var(--softui-accent-light);
+  color: var(--softui-accent);
+  border-radius: 6px;
+}
+
+.player-page--softui-dark .chat-message--assistant .message-content :deep(pre) {
+  background: rgba(0, 0, 0, 0.3);
+  border: none;
+  border-radius: var(--softui-radius-sm);
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui-dark .chat-input {
+  background: transparent;
+  border-top: none;
+  padding: var(--spacing-md);
+}
+
+.player-page--softui-dark .chat-input :deep(.el-input__wrapper) {
+  background: var(--softui-bg-light) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-inset-sm) !important;
+}
+
+.player-page--softui-dark .chat-input :deep(.el-input__inner) {
+  color: var(--softui-text-primary) !important;
+}
+
+.player-page--softui-dark .chat-input :deep(.el-input-group__append) {
+  background: var(--softui-bg-light) !important;
+  border: none !important;
+  border-radius: 0 var(--softui-radius-sm) var(--softui-radius-sm) 0 !important;
+  box-shadow: var(--softui-shadow-raised-sm) !important;
+}
+
+.player-page--softui-dark .chat-input :deep(.el-input-group__append .el-button) {
+  background: transparent !important;
+  border: none !important;
+  color: var(--softui-accent) !important;
+}
+
+/* Footer Controls */
+.player-page--softui-dark .player-footer {
+  background: var(--softui-bg);
+  border-top: none;
+  margin: 0 12px 12px 12px;
+  border-radius: var(--softui-radius);
+  box-shadow: var(--softui-shadow-raised);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.player-page--softui-dark .progress-current {
+  color: var(--softui-accent);
+  font-weight: 700;
+  text-shadow: none;
+}
+
+.player-page--softui-dark .progress-separator,
+.player-page--softui-dark .progress-total {
+  color: var(--softui-text-muted);
+}
+
+/* Timeline Slider */
+.player-page--softui-dark .timeline-slider {
+  background: var(--softui-bg);
+  border: none;
+  border-radius: var(--softui-radius-lg);
+  box-shadow: var(--softui-shadow-inset);
+  padding: 12px 20px;
+}
+
+.player-page--softui-dark .timeline-slider::before,
+.player-page--softui-dark .timeline-slider::after {
+  display: none;
+}
+
+.player-page--softui-dark .timeline-slider :deep(.el-slider__runway) {
+  background: transparent !important;
+  height: 6px;
+  border-radius: 3px;
+  box-shadow: var(--softui-shadow-inset-sm);
+}
+
+.player-page--softui-dark .timeline-slider :deep(.el-slider__bar) {
+  background: linear-gradient(90deg, var(--softui-accent), var(--softui-accent-secondary)) !important;
+  border-radius: 3px;
+  box-shadow: none;
+}
+
+.player-page--softui-dark .timeline-slider :deep(.el-slider__button) {
+  width: 18px;
+  height: 18px;
+  background: var(--softui-bg-light);
+  border: none;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui-dark .timeline-slider :deep(.el-slider__button:hover) {
+  transform: scale(1.15);
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+}
+
+/* Player Controls */
+.player-page--softui-dark .player-controls :deep(.el-button-group) {
+  gap: 8px;
+}
+
+.player-page--softui-dark .player-controls :deep(.el-button) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  color: var(--softui-text-secondary) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui-dark .player-controls :deep(.el-button:hover:not(:disabled)) {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+  color: var(--softui-accent) !important;
+}
+
+.player-page--softui-dark .player-controls :deep(.el-button:active:not(:disabled)) {
+  box-shadow: var(--softui-shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.player-page--softui-dark .player-controls :deep(.el-button:disabled) {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+/* Play Button - Prominent */
+.player-page--softui-dark .play-button {
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, var(--softui-accent) 0%, var(--softui-accent-secondary) 100%) !important;
+  border: none !important;
+  box-shadow:
+    8px 8px 16px var(--softui-shadow-dark),
+    -8px -8px 16px var(--softui-shadow-light),
+    inset 0 2px 0 rgba(255, 255, 255, 0.15) !important;
+  color: #1a202c !important;
+  font-size: 20px !important;
+  transition: var(--softui-transition) !important;
+}
+
+.player-page--softui-dark .play-button:hover {
+  transform: translateY(-3px) !important;
+  box-shadow:
+    12px 12px 24px var(--softui-shadow-dark),
+    -12px -12px 24px var(--softui-shadow-light),
+    inset 0 2px 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+.player-page--softui-dark .play-button:active {
+  transform: translateY(0) !important;
+  box-shadow:
+    inset 4px 4px 8px rgba(0, 0, 0, 0.4),
+    inset -2px -2px 6px rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Speed Selector */
+.player-page--softui-dark .player-controls :deep(.el-select .el-input__wrapper) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-inset-sm) !important;
+}
+
+.player-page--softui-dark .player-controls :deep(.el-select .el-input__inner) {
+  font-family: inherit !important;
+  color: var(--softui-text-primary) !important;
+  font-weight: 500;
+}
+
+/* Keyboard Hints */
+.player-page--softui-dark .shortcuts-hint {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui-dark kbd {
+  background: var(--softui-bg-light);
+  border: none;
+  border-radius: 8px;
+  color: var(--softui-text-secondary);
+  box-shadow: var(--softui-shadow-raised-sm);
+  font-size: 0.7rem;
+  padding: 4px 10px;
+}
+
+/* Header Buttons */
+.player-page--softui-dark .player-header :deep(.el-button) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  color: var(--softui-text-secondary) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui-dark .player-header :deep(.el-button:hover) {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+  color: var(--softui-accent) !important;
+}
+
+.player-page--softui-dark .player-header :deep(.el-button:active) {
+  box-shadow: var(--softui-shadow-inset-sm);
+  transform: translateY(0);
+}
+
+.player-page--softui-dark .player-header :deep(.el-button--primary) {
+  background: linear-gradient(135deg, var(--softui-accent), var(--softui-accent-secondary)) !important;
+  color: #1a202c !important;
+}
+
+/* Button Groups */
+.player-page--softui-dark .player-header :deep(.el-button-group) {
+  box-shadow: var(--softui-shadow-raised-sm);
+  border-radius: var(--softui-radius-sm);
+  overflow: hidden;
+}
+
+.player-page--softui-dark .player-header :deep(.el-button-group .el-button) {
+  box-shadow: none;
+  border-radius: 0 !important;
+}
+
+.player-page--softui-dark .player-header :deep(.el-button-group .el-button:first-child) {
+  border-radius: var(--softui-radius-sm) 0 0 var(--softui-radius-sm) !important;
+}
+
+.player-page--softui-dark .player-header :deep(.el-button-group .el-button:last-child) {
+  border-radius: 0 var(--softui-radius-sm) var(--softui-radius-sm) 0 !important;
+}
+
+.player-page--softui-dark .player-header :deep(.el-button-group .el-button:hover) {
+  transform: none;
+  background: rgba(144, 205, 244, 0.1) !important;
+}
+
+.player-page--softui-dark .player-header :deep(.el-button-group .el-button--primary:hover) {
+  background: linear-gradient(135deg, #7ec8f0, #a685e8) !important;
+}
+
+/* Selects */
+.player-page--softui-dark .style-selector :deep(.el-input__wrapper) {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  box-shadow: var(--softui-shadow-inset-sm) !important;
+}
+
+.player-page--softui-dark .style-selector :deep(.el-input__inner) {
+  color: var(--softui-text-primary) !important;
+}
+
+/* AI Analysis */
+.player-page--softui-dark .ai-analysis-row {
+  border-top-color: rgba(255, 255, 255, 0.05);
+}
+
+.player-page--softui-dark .ai-analysis-btn {
+  background: var(--softui-bg) !important;
+  border: none !important;
+  border-radius: var(--softui-radius-sm) !important;
+  color: var(--softui-accent) !important;
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui-dark .ai-analysis-btn:hover {
+  box-shadow: 8px 8px 16px var(--softui-shadow-dark), -8px -8px 16px var(--softui-shadow-light);
+  transform: translateY(-2px);
+}
+
+.player-page--softui-dark .quick-summary {
+  color: var(--softui-text-secondary);
+}
+
+.player-page--softui-dark .quick-summary:hover {
+  color: var(--softui-accent);
+}
+
+/* Commit Separator */
+.player-page--softui-dark .commit-separator {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui-dark .separator-line {
+  background: linear-gradient(to right, transparent, var(--softui-text-muted), transparent);
+  opacity: 0.3;
+}
+
+.player-page--softui-dark .separator-content {
+  background: var(--softui-bg-light);
+  border: none;
+  border-radius: var(--softui-radius-lg);
+  box-shadow: var(--softui-shadow-raised-sm);
+  transition: var(--softui-transition);
+}
+
+.player-page--softui-dark .separator-content:hover {
+  box-shadow: 6px 6px 12px var(--softui-shadow-dark), -6px -6px 12px var(--softui-shadow-light);
+}
+
+.player-page--softui-dark .separator-badge {
+  color: var(--softui-accent);
+}
+
+.player-page--softui-dark .separator-hash {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui-dark .separator-message {
+  color: var(--softui-text-secondary);
+}
+
+/* Loading animation */
+.player-page--softui-dark .loading-dots span {
+  background: var(--softui-accent);
+}
+
+.player-page--softui-dark .streaming-cursor {
+  color: var(--softui-accent);
+}
+
+/* Remove playing animations */
+.player-page--softui-dark.is-playing .timeline-slider::before,
+.player-page--softui-dark.is-playing .timeline-slider::after {
+  animation: none;
+}
+
+/* Analysis Popover */
+.player-page--softui-dark .analysis-header {
+  background: var(--softui-accent-light);
+  border-radius: var(--softui-radius-sm) var(--softui-radius-sm) 0 0;
+}
+
+.player-page--softui-dark .analysis-title {
+  color: var(--softui-accent);
+}
+
+.player-page--softui-dark .analysis-body {
+  color: var(--softui-text-primary);
+}
+
+.player-page--softui-dark .analysis-text {
+  color: var(--softui-text-primary);
+}
+
+.player-page--softui-dark .analysis-label {
+  color: var(--softui-text-muted);
+}
+
+.player-page--softui-dark .analysis-footer {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 0 0 var(--softui-radius-sm) var(--softui-radius-sm);
+}
+
+.player-page--softui-dark .score-stars {
+  color: var(--softui-accent);
+}
+
+.player-page--softui-dark .score-item {
+  color: var(--softui-text-muted);
+}
+
+/* Story Dialog */
+.player-page--softui-dark .story-milestones {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.player-page--softui-dark .story-milestones h4 {
+  color: var(--softui-accent);
+}
+
+.player-page--softui-dark .story-text {
+  color: var(--softui-text-primary);
+}
 </style>
+
+
+
+
+
+
 
 
 

@@ -393,32 +393,168 @@ public class FileServiceImpl implements FileService {
                 .orderByAsc(CommitRecord::getCommitOrder);
         List<CommitRecord> commits = commitRecordMapper.selectList(crWrapper);
 
+        // 检测语言类型
+        String language = detectLanguage(filePath);
+        String previousContent = null;
+
         for (CommitRecord commit : commits) {
-            String content = gitService.getFileContent(repo.getLocalPath(), commit.getCommitHash(), filePath);
-            if (content == null) {
+            String fileContent = gitService.getFileContent(repo.getLocalPath(), commit.getCommitHash(), filePath);
+            if (fileContent == null) {
                 continue;
             }
 
-            boolean methodExists = content.contains(methodName + "(") ||
-                    content.contains(methodName + " (");
+            // 首先检查方法是否存在（简单字符串匹配）
+            boolean methodExists = fileContent.contains(methodName + "(") ||
+                    fileContent.contains(methodName + " (");
 
             if (methodExists) {
-                Map<String, Object> entry = new HashMap<>();
-                entry.put("commitId", commit.getId());
-                entry.put("commitHash", commit.getCommitHash());
-                entry.put("shortHash", commit.getShortHash());
-                entry.put("authorName", commit.getAuthorName());
-                entry.put("commitMessage", commit.getCommitMessage());
-                entry.put("commitTime", commit.getCommitTime().toString());
-                entry.put("additions", commit.getAdditions());
-                entry.put("deletions", commit.getDeletions());
-                entry.put("content", content);
+                // 尝试提取方法代码
+                String methodContent = extractMethodContent(fileContent, methodName, language);
 
-                timeline.add(entry);
+                // 如果提取失败，回退到完整文件
+                String contentToUse = (methodContent != null) ? methodContent : fileContent;
+
+                // 只有当内容与上一版本不同时才添加到时间线
+                if (previousContent == null || !contentToUse.equals(previousContent)) {
+                    Map<String, Object> entry = new HashMap<>();
+                    entry.put("commitId", commit.getId());
+                    entry.put("commitHash", commit.getCommitHash());
+                    entry.put("shortHash", commit.getShortHash());
+                    entry.put("authorName", commit.getAuthorName());
+                    entry.put("commitMessage", commit.getCommitMessage());
+                    entry.put("commitTime", commit.getCommitTime().toString());
+                    entry.put("additions", commit.getAdditions());
+                    entry.put("deletions", commit.getDeletions());
+                    entry.put("content", contentToUse);
+                    entry.put("extracted", methodContent != null); // 标记是否成功提取
+
+                    timeline.add(entry);
+                }
+                previousContent = contentToUse;
             }
         }
 
         return timeline;
+    }
+
+    /**
+     * 从文件内容中提取指定方法的代码
+     */
+    private String extractMethodContent(String fileContent, String methodName, String language) {
+        String[] lines = fileContent.split("\n");
+        int startLine = -1;
+        int braceCount = 0;
+        boolean foundStart = false;
+        int endLine = -1;
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (line == null)
+                continue;
+
+            // 匹配方法定义
+            if (!foundStart && (line.contains(methodName + "(") ||
+                    line.contains(methodName + " (") ||
+                    line.matches(".*\\b" + methodName + "\\s*\\(.*"))) {
+                // 检查是否是方法定义（不是调用）
+                String trimmed = line.trim();
+                boolean isDefinition = false;
+
+                switch (language) {
+                    case "java":
+                        isDefinition = trimmed
+                                .matches("^(public|private|protected|static|final|synchronized|abstract|native|\\s)+.*"
+                                        + methodName + "\\s*\\(.*");
+                        break;
+                    case "typescript":
+                    case "javascript":
+                    case "jsx":
+                        // TS/JS: function name(), async function name(), name() {, async name() {, name
+                        // = () =>
+                        isDefinition = trimmed.startsWith("function ") ||
+                                trimmed.startsWith("async function ") ||
+                                trimmed.startsWith("async ") ||
+                                trimmed.matches("^(public|private|protected|static|readonly|async|\\s)*" + methodName
+                                        + "\\s*[(<].*")
+                                ||
+                                trimmed.matches("^(const|let|var)\\s+" + methodName + "\\s*=.*") ||
+                                trimmed.matches("^" + methodName + "\\s*\\(.*\\)\\s*\\{?$") ||
+                                trimmed.matches("^" + methodName + "\\s*=\\s*\\(.*");
+                        break;
+                    case "python":
+                        isDefinition = trimmed.startsWith("def ") || trimmed.startsWith("async def ");
+                        break;
+                    case "go":
+                        isDefinition = trimmed.startsWith("func ");
+                        break;
+                    default:
+                        isDefinition = trimmed.matches("^(function|def|fn|func|public|private|protected)\\s+.*");
+                }
+
+                if (isDefinition) {
+                    startLine = i;
+                    foundStart = true;
+                }
+            }
+
+            if (foundStart) {
+                // Python 使用缩进
+                if ("python".equals(language)) {
+                    if (i > startLine) {
+                        String trimmed = line.trim();
+                        if (!trimmed.isEmpty() && !trimmed.startsWith("#")) {
+                            int currentIndent = getIndent(line);
+                            int defIndent = getIndent(lines[startLine]);
+                            if (currentIndent <= defIndent) {
+                                endLine = i - 1;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // 大括号语言
+                    for (char c : line.toCharArray()) {
+                        if (c == '{')
+                            braceCount++;
+                        if (c == '}')
+                            braceCount--;
+                    }
+
+                    if (braceCount == 0 && line.contains("}")) {
+                        endLine = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Python 文件末尾情况
+        if ("python".equals(language) && foundStart && endLine < 0) {
+            endLine = lines.length - 1;
+        }
+
+        if (startLine >= 0 && endLine >= startLine) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = startLine; i <= endLine && i < lines.length; i++) {
+                sb.append(lines[i]).append("\n");
+            }
+            return sb.toString();
+        }
+
+        return null;
+    }
+
+    private int getIndent(String line) {
+        int indent = 0;
+        for (char c : line.toCharArray()) {
+            if (c == ' ')
+                indent++;
+            else if (c == '\t')
+                indent += 4;
+            else
+                break;
+        }
+        return indent;
     }
 
     @Override
