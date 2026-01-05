@@ -376,4 +376,30 @@ export const statsApi = {
   }
 }
 
+export const userApi = {
+  getPreference(sessionId: string): Promise<{
+    id: number
+    sessionId: string
+    skillLevel: string | null
+  } | null> {
+    return api.get('/user/preference', { params: { sessionId } })
+  },
+
+  saveSkillLevel(sessionId: string, skillLevel: string): Promise<void> {
+    return api.put('/user/skill-level', { sessionId, skillLevel })
+  },
+
+  getRecommendedRepos(level?: string): Promise<Array<{
+    name: string
+    url: string
+    description: string
+    level: string
+    tags: string[]
+    stars: string
+    language: string
+  }>> {
+    return api.get('/user/recommended-repos', { params: { level } })
+  }
+}
+
 export default api

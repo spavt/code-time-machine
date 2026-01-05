@@ -4,13 +4,17 @@ import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
 import { useTheme } from '@/composables/useTheme'
+import { useSkillLevel } from '@/composables/useSkillLevel'
 import { DepthPresets } from '@/types'
 import { ElMessage } from 'element-plus'
 import { Setting, QuestionFilled, ArrowDown, InfoFilled } from '@element-plus/icons-vue'
+import SkillLevelSelector from '@/components/SkillLevelSelector.vue'
+import RecommendedRepoCard from '@/components/RecommendedRepoCard.vue'
 
 const router = useRouter()
 const repoStore = useRepositoryStore()
 const { isDarkMode, toggleTheme } = useTheme()
+const { selectedLevel, recommendedRepos, setLevel } = useSkillLevel()
 const { analyzing, analyzeProgress } = storeToRefs(repoStore)
 
 const repoUrl = ref('')
@@ -93,6 +97,10 @@ function selectExample(url: string) {
     showAdvancedOptions.value = true
     ElMessage.info(repo.warning)
   }
+}
+
+function selectRecommendedRepo(url: string) {
+  repoUrl.value = url
 }
 
 function goBack() {
@@ -255,8 +263,29 @@ function goBack() {
           </div>
         </div>
 
+        <div class="skill-section">
+          <SkillLevelSelector v-model="selectedLevel" @update:model-value="setLevel" />
+          
+          <transition name="fade-slide">
+            <div v-if="selectedLevel && recommendedRepos.length > 0" class="recommended-section">
+              <h3 class="recommended-title">
+                <span class="recommended-icon">✨</span>
+                为你推荐的学习项目
+              </h3>
+              <div class="recommended-grid">
+                <RecommendedRepoCard
+                  v-for="repo in recommendedRepos"
+                  :key="repo.url"
+                  :repo="repo"
+                  @select="selectRecommendedRepo"
+                />
+              </div>
+            </div>
+          </transition>
+        </div>
+
         <div class="example-section">
-          <h3>试试这些热门项目</h3>
+          <h3>或者试试这些热门项目</h3>
           <div class="example-list">
             <div 
               v-for="repo in exampleRepos" 
@@ -774,5 +803,50 @@ function goBack() {
 .slide-down-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+
+/* Skill Level Section */
+.skill-section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.recommended-section {
+  margin-top: var(--spacing-xl);
+}
+
+.recommended-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 1.1rem;
+  margin-bottom: var(--spacing-lg);
+  color: var(--text-primary);
+}
+
+.recommended-icon {
+  font-size: 1.2rem;
+}
+
+.recommended-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-md);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.4s ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+@media (max-width: 768px) {
+  .recommended-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
