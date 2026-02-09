@@ -17,6 +17,7 @@ public class LearningMissionDTO {
     private List<String> filePaths;
     private List<String> recommendationEvidence;
     private List<KeyCommitDTO> keyCommits;
+    private List<LearningMethodUnitDTO> methodUnits;
     private List<String> learningSteps;
     private List<String> checkpoints;
 }

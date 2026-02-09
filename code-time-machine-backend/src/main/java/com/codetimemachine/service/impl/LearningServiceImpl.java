@@ -2,12 +2,17 @@ package com.codetimemachine.service.impl;
 
 import com.codetimemachine.common.BusinessException;
 import com.codetimemachine.dto.KeyCommitDTO;
+import com.codetimemachine.dto.LearningMethodUnitDTO;
 import com.codetimemachine.dto.LearningMissionDTO;
 import com.codetimemachine.dto.LearningPlanDTO;
+import com.codetimemachine.dto.LearningQuizQuestionDTO;
+import com.codetimemachine.dto.MethodInfo;
 import com.codetimemachine.entity.Repository;
 import com.codetimemachine.mapper.FileChangeMapper;
 import com.codetimemachine.mapper.RepositoryMapper;
+import com.codetimemachine.service.FileService;
 import com.codetimemachine.service.LearningService;
+import com.codetimemachine.service.MethodParserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -38,10 +43,16 @@ public class LearningServiceImpl implements LearningService {
     private static final int MIN_CO_CHANGE_COUNT = 2;
     private static final double MIN_CO_CHANGE_RATIO = 0.15;
     private static final int MAX_COMMIT_CANDIDATES = 180;
+    private static final int MAX_METHOD_UNITS_PER_MISSION = 3;
+    private static final int MAX_METHODS_PER_FILE = 2;
+    private static final int QUIZ_OPTIONS_PER_QUESTION = 4;
+    private static final int METHOD_PASS_THRESHOLD = 2;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final RepositoryMapper repositoryMapper;
     private final FileChangeMapper fileChangeMapper;
+    private final FileService fileService;
+    private final MethodParserService methodParserService;
 
     @Override
     public LearningPlanDTO buildLearningPlan(Long repoId) {
@@ -73,7 +84,8 @@ public class LearningServiceImpl implements LearningService {
         plan.setGlobalSuggestions(List.of(
                 "先从任务证据卡理解‘为什么推荐’，再进入具体文件和关键提交。",
                 "关键提交按‘引入-转折-稳定’三阶段组织，建议按顺序阅读。",
-                "每个任务完成后，用一句话总结模块职责、边界和最近演进方向。"));
+                "每个任务完成后，用一句话总结模块职责、边界和最近演进方向。",
+                "新增方法级掌握单元：先吃透一个方法，再完成轻量测验并解锁下一个方法。"));
         return plan;
     }
 
@@ -295,31 +307,36 @@ public class LearningServiceImpl implements LearningService {
         mission.setObjective("围绕模块职责、依赖关系和演进拐点，形成可复述的功能理解。");
         mission.setImportanceReason("该模块热度为 " + module.hotScore + "，且存在明显的跨文件共变更行为。");
         mission.setDifficulty(resolveDifficulty(module.hotScore, module.fileCount));
-        mission.setEstimatedMinutes(estimateMinutes(module));
         mission.setHotScore(module.hotScore);
         mission.setFilePaths(module.topFiles);
 
-        List<KeyCommitDTO> keyCommits = loadStageKeyCommits(repoId, module.topFiles);
+        List<KeyCommitCandidate> commitCandidates = loadModuleCommitCandidates(repoId, module.topFiles);
+        List<KeyCommitDTO> keyCommits = loadStageKeyCommits(commitCandidates);
+        List<LearningMethodUnitDTO> methodUnits = buildMethodUnits(repoId, module.topFiles, commitCandidates, keyCommits);
+        mission.setMethodUnits(methodUnits);
+        mission.setEstimatedMinutes(estimateMinutes(module, methodUnits.size()));
         mission.setKeyCommits(keyCommits);
         mission.setRecommendationEvidence(buildEvidence(module, keyCommits));
-        mission.setLearningSteps(buildLearningSteps(module, keyCommits));
-        mission.setCheckpoints(buildCheckpoints(module));
+        mission.setLearningSteps(buildLearningSteps(module, keyCommits, methodUnits));
+        mission.setCheckpoints(buildCheckpoints(module, methodUnits));
         return mission;
     }
 
-    private List<KeyCommitDTO> loadStageKeyCommits(Long repoId, List<String> topFiles) {
+    private List<KeyCommitCandidate> loadModuleCommitCandidates(Long repoId, List<String> topFiles) {
         if (topFiles == null || topFiles.isEmpty()) {
             return List.of();
         }
 
         List<Map<String, Object>> rows = fileChangeMapper.getModuleCommitCandidates(repoId, topFiles);
-        List<KeyCommitCandidate> allCandidates = rows.stream()
+        return rows.stream()
                 .map(this::toCommitCandidate)
                 .filter(Objects::nonNull)
                 .filter(c -> c.commitOrder != null)
                 .collect(Collectors.toList());
+    }
 
-        if (allCandidates.isEmpty()) {
+    private List<KeyCommitDTO> loadStageKeyCommits(List<KeyCommitCandidate> allCandidates) {
+        if (allCandidates == null || allCandidates.isEmpty()) {
             return List.of();
         }
 
@@ -527,6 +544,405 @@ public class LearningServiceImpl implements LearningService {
         return false;
     }
 
+    private List<LearningMethodUnitDTO> buildMethodUnits(Long repoId,
+                                                         List<String> topFiles,
+                                                         List<KeyCommitCandidate> commitCandidates,
+                                                         List<KeyCommitDTO> keyCommits) {
+        if (topFiles == null || topFiles.isEmpty()) {
+            return List.of();
+        }
+
+        Long referenceCommitId = resolveReferenceCommitId(commitCandidates, keyCommits);
+        Map<String, Long> latestCommitByFile = buildLatestCommitByFile(commitCandidates);
+
+        List<LearningMethodUnitDTO> units = new ArrayList<>();
+        for (String filePath : topFiles) {
+            if (units.size() >= MAX_METHOD_UNITS_PER_MISSION) {
+                break;
+            }
+            if (filePath == null || filePath.isBlank()) {
+                continue;
+            }
+            if (!isSourceLikeFile(filePath)) {
+                continue;
+            }
+
+            Long commitId = latestCommitByFile.getOrDefault(filePath, referenceCommitId);
+            if (commitId == null) {
+                continue;
+            }
+
+            String content = fileService.getFileContent(repoId, commitId, filePath);
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+
+            String language = detectLanguageByPath(filePath);
+            List<MethodInfo> methods = methodParserService.parseMethods(content, language);
+            if (methods == null || methods.isEmpty()) {
+                continue;
+            }
+
+            List<MethodInfo> selectedMethods = methods.stream()
+                    .filter(this::isMethodCandidate)
+                    .sorted(Comparator.comparingInt(this::scoreMethod).reversed())
+                    .limit(MAX_METHODS_PER_FILE)
+                    .collect(Collectors.toList());
+
+            for (MethodInfo method : selectedMethods) {
+                if (units.size() >= MAX_METHOD_UNITS_PER_MISSION) {
+                    break;
+                }
+                units.add(toMethodUnit(filePath, method, topFiles));
+            }
+        }
+
+        if (units.isEmpty()) {
+            units.addAll(buildFallbackMethodUnits(repoId, topFiles, referenceCommitId));
+        }
+
+        if (units.size() > MAX_METHOD_UNITS_PER_MISSION) {
+            return units.subList(0, MAX_METHOD_UNITS_PER_MISSION);
+        }
+        return units;
+    }
+
+    private Map<String, Long> buildLatestCommitByFile(List<KeyCommitCandidate> commitCandidates) {
+        if (commitCandidates == null || commitCandidates.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, Long> latestByFile = new HashMap<>();
+        List<KeyCommitCandidate> ordered = commitCandidates.stream()
+                .sorted(Comparator.comparingInt((KeyCommitCandidate c) -> c.commitOrder == null ? Integer.MIN_VALUE : c.commitOrder).reversed())
+                .collect(Collectors.toList());
+
+        for (KeyCommitCandidate candidate : ordered) {
+            if (candidate.commitId == null || candidate.hitFiles == null) {
+                continue;
+            }
+            for (String hitFile : candidate.hitFiles) {
+                if (hitFile == null || hitFile.isBlank()) {
+                    continue;
+                }
+                latestByFile.putIfAbsent(hitFile, candidate.commitId);
+            }
+        }
+        return latestByFile;
+    }
+
+    private List<LearningMethodUnitDTO> buildFallbackMethodUnits(Long repoId,
+                                                                 List<String> topFiles,
+                                                                 Long defaultCommitId) {
+        List<FileHotStat> allStats = loadFileStats(repoId);
+        if (allStats.isEmpty()) {
+            return List.of();
+        }
+
+        Set<String> excluded = topFiles == null ? Set.of() : new HashSet<>(topFiles);
+        List<String> sourceCandidates = allStats.stream()
+                .map(f -> f.filePath)
+                .filter(path -> !excluded.contains(path))
+                .filter(this::isSourceLikeFile)
+                .limit(30)
+                .collect(Collectors.toList());
+        if (sourceCandidates.isEmpty()) {
+            return List.of();
+        }
+
+        List<KeyCommitCandidate> candidateCommits = fileChangeMapper.getModuleCommitCandidates(repoId, sourceCandidates).stream()
+                .map(this::toCommitCandidate)
+                .filter(Objects::nonNull)
+                .filter(c -> c.commitOrder != null)
+                .collect(Collectors.toList());
+
+        Map<String, Long> latestByFile = buildLatestCommitByFile(candidateCommits);
+        List<LearningMethodUnitDTO> units = new ArrayList<>();
+        for (String filePath : sourceCandidates) {
+            if (units.size() >= MAX_METHOD_UNITS_PER_MISSION) {
+                break;
+            }
+            Long commitId = latestByFile.getOrDefault(filePath, defaultCommitId);
+            if (commitId == null) {
+                continue;
+            }
+
+            String content = fileService.getFileContent(repoId, commitId, filePath);
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+
+            String language = detectLanguageByPath(filePath);
+            List<MethodInfo> methods = methodParserService.parseMethods(content, language);
+            if (methods == null || methods.isEmpty()) {
+                continue;
+            }
+
+            MethodInfo selected = methods.stream()
+                    .filter(this::isMethodCandidate)
+                    .max(Comparator.comparingInt(this::scoreMethod))
+                    .orElse(null);
+            if (selected != null) {
+                units.add(toMethodUnit(filePath, selected, sourceCandidates));
+            }
+        }
+        return units;
+    }
+
+    private Long resolveReferenceCommitId(List<KeyCommitCandidate> commitCandidates, List<KeyCommitDTO> keyCommits) {
+        if (commitCandidates != null && !commitCandidates.isEmpty()) {
+            return commitCandidates.stream()
+                    .filter(c -> c.commitId != null)
+                    .max(Comparator.comparingInt((KeyCommitCandidate c) -> c.commitOrder == null ? Integer.MIN_VALUE : c.commitOrder))
+                    .map(c -> c.commitId)
+                    .orElse(null);
+        }
+
+        if (keyCommits != null && !keyCommits.isEmpty()) {
+            return keyCommits.stream()
+                    .filter(c -> c.getCommitId() != null)
+                    .max(Comparator.comparingInt((KeyCommitDTO c) -> c.getCommitOrder() == null ? Integer.MIN_VALUE : c.getCommitOrder()))
+                    .map(KeyCommitDTO::getCommitId)
+                    .orElse(null);
+        }
+
+        return null;
+    }
+
+    private LearningMethodUnitDTO toMethodUnit(String filePath, MethodInfo method, List<String> moduleFiles) {
+        LearningMethodUnitDTO unit = new LearningMethodUnitDTO();
+        unit.setUnitId("unit-" + sanitizeId(filePath + "-" + method.getName() + "-" + method.getStartLine()));
+        unit.setFilePath(filePath);
+        unit.setMethodName(method.getName());
+        unit.setMethodSignature(method.getSignature());
+        unit.setClassName(method.getClassName());
+        unit.setStartLine(method.getStartLine() > 0 ? method.getStartLine() : null);
+        unit.setEndLine(method.getEndLine() > 0 ? method.getEndLine() : null);
+        unit.setParameterCount(Math.max(0, method.getParameterCount()));
+        unit.setObjective("理解该方法的输入、输出、分支和异常处理路径。");
+        unit.setImportanceReason("该方法来自当前任务的热点文件，先吃透一个方法再扩展到模块更适合新手。");
+
+        int span = methodSpan(method);
+        int estimatedMinutes = Math.max(6, Math.min(16, 5 + span / 6 + Math.max(0, method.getParameterCount())));
+        unit.setEstimatedMinutes(estimatedMinutes);
+        unit.setLearningHints(List.of(
+                "先看方法签名，写出输入参数和可能的返回结果。",
+                "按 if/switch/循环分支梳理主路径和边界条件。",
+                "结合关键提交，判断该方法最近是扩展、重构还是稳定性修复。"));
+
+        List<LearningQuizQuestionDTO> quizQuestions = buildMethodQuiz(method, filePath, moduleFiles);
+        unit.setQuizQuestions(quizQuestions);
+        unit.setPassThreshold(Math.min(METHOD_PASS_THRESHOLD, Math.max(1, quizQuestions.size())));
+        return unit;
+    }
+
+    private List<LearningQuizQuestionDTO> buildMethodQuiz(MethodInfo method,
+                                                          String filePath,
+                                                          List<String> moduleFiles) {
+        List<LearningQuizQuestionDTO> questions = new ArrayList<>();
+        questions.add(buildParameterCountQuestion(method));
+        questions.add(buildStartLineQuestion(method));
+        questions.add(buildFileLocationQuestion(method, filePath, moduleFiles));
+        return questions;
+    }
+
+    private LearningQuizQuestionDTO buildParameterCountQuestion(MethodInfo method) {
+        int correct = Math.max(0, method.getParameterCount());
+        return createQuizQuestion(
+                "q-params-" + sanitizeId(method.getName()),
+                "方法 `" + method.getName() + "` 声明了几个参数？",
+                numericOptions(correct, 0),
+                String.valueOf(correct),
+                "参数个数来自当前快照中的方法签名。",
+                method.getName().hashCode());
+    }
+
+    private LearningQuizQuestionDTO buildStartLineQuestion(MethodInfo method) {
+        int startLine = Math.max(1, method.getStartLine());
+        List<String> options = new ArrayList<>();
+        options.add(String.valueOf(startLine));
+        options.add(String.valueOf(Math.max(1, startLine - 3)));
+        options.add(String.valueOf(startLine + 3));
+        options.add(String.valueOf(startLine + 6));
+        return createQuizQuestion(
+                "q-line-" + sanitizeId(method.getName()),
+                "在当前快照中，方法 `" + method.getName() + "` 从哪一行开始？",
+                options,
+                String.valueOf(startLine),
+                "行号来自方法解析结果，可在代码中快速定位验证。",
+                method.getName().hashCode() + 17);
+    }
+
+    private LearningQuizQuestionDTO buildFileLocationQuestion(MethodInfo method,
+                                                              String filePath,
+                                                              List<String> moduleFiles) {
+        List<String> options = new ArrayList<>();
+        options.add(filePath);
+        if (moduleFiles != null) {
+            for (String path : moduleFiles) {
+                if (path != null && !path.isBlank() && !path.equals(filePath)) {
+                    options.add(path);
+                }
+            }
+        }
+        options.add("README.md");
+        options.add("package.json");
+
+        return createQuizQuestion(
+                "q-file-" + sanitizeId(method.getName()),
+                "方法 `" + method.getName() + "` 当前位于哪个文件？",
+                options,
+                filePath,
+                "方法级学习单元要求先建立“方法-文件-模块”的定位关系。",
+                method.getName().hashCode() + 31);
+    }
+
+    private LearningQuizQuestionDTO createQuizQuestion(String questionId,
+                                                       String question,
+                                                       List<String> rawOptions,
+                                                       String correctOption,
+                                                       String explanation,
+                                                       int shuffleSeed) {
+        List<String> options = normalizeOptions(rawOptions, correctOption);
+        List<String> shuffled = deterministicShuffle(options, shuffleSeed);
+        int correctIndex = shuffled.indexOf(correctOption);
+        if (correctIndex < 0) {
+            correctIndex = 0;
+            shuffled.set(0, correctOption);
+        }
+
+        LearningQuizQuestionDTO questionDTO = new LearningQuizQuestionDTO();
+        questionDTO.setQuestionId(questionId);
+        questionDTO.setQuestion(question);
+        questionDTO.setOptions(shuffled);
+        questionDTO.setCorrectOptionIndex(correctIndex);
+        questionDTO.setExplanation(explanation);
+        return questionDTO;
+    }
+
+    private List<String> normalizeOptions(List<String> rawOptions, String correctOption) {
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        if (correctOption != null && !correctOption.isBlank()) {
+            unique.add(correctOption);
+        }
+        if (rawOptions != null) {
+            for (String option : rawOptions) {
+                if (option != null && !option.isBlank()) {
+                    unique.add(option);
+                }
+            }
+        }
+
+        List<String> options = new ArrayList<>(unique);
+        if (options.size() <= 1) {
+            options.add("无法判断");
+        }
+        if (options.size() > QUIZ_OPTIONS_PER_QUESTION) {
+            List<String> trimmed = new ArrayList<>();
+            trimmed.add(correctOption);
+            for (String option : options) {
+                if (trimmed.size() >= QUIZ_OPTIONS_PER_QUESTION) {
+                    break;
+                }
+                if (!option.equals(correctOption)) {
+                    trimmed.add(option);
+                }
+            }
+            options = trimmed;
+        }
+        return options;
+    }
+
+    private List<String> deterministicShuffle(List<String> options, int seed) {
+        List<String> shuffled = new ArrayList<>(options);
+        if (shuffled.size() <= 1) {
+            return shuffled;
+        }
+
+        for (int i = 0; i < shuffled.size(); i++) {
+            int swapIndex = Math.floorMod(seed + i * 31, shuffled.size());
+            String temp = shuffled.get(i);
+            shuffled.set(i, shuffled.get(swapIndex));
+            shuffled.set(swapIndex, temp);
+        }
+        return shuffled;
+    }
+
+    private List<String> numericOptions(int correctValue, int minValue) {
+        LinkedHashSet<Integer> options = new LinkedHashSet<>();
+        options.add(Math.max(minValue, correctValue));
+        options.add(Math.max(minValue, correctValue + 1));
+        options.add(Math.max(minValue, correctValue + 2));
+        options.add(Math.max(minValue, correctValue - 1));
+
+        int cursor = correctValue + 3;
+        while (options.size() < QUIZ_OPTIONS_PER_QUESTION) {
+            options.add(Math.max(minValue, cursor++));
+        }
+
+        return options.stream()
+                .limit(QUIZ_OPTIONS_PER_QUESTION)
+                .map(String::valueOf)
+                .collect(Collectors.toList());
+    }
+
+    private boolean isMethodCandidate(MethodInfo method) {
+        if (method == null || method.getName() == null || method.getName().isBlank()) {
+            return false;
+        }
+        String lowerName = method.getName().toLowerCase(Locale.ROOT);
+        if (Set.of("if", "for", "while", "switch", "catch").contains(lowerName)) {
+            return false;
+        }
+        return methodSpan(method) >= 2 || method.getParameterCount() > 0;
+    }
+
+    private int scoreMethod(MethodInfo method) {
+        int span = methodSpan(method);
+        int parameterWeight = Math.max(0, method.getParameterCount()) * 3;
+        int signatureWeight = method.getSignature() != null && method.getSignature().contains("throws") ? 2 : 0;
+        return span + parameterWeight + signatureWeight;
+    }
+
+    private int methodSpan(MethodInfo method) {
+        if (method == null) {
+            return 1;
+        }
+        int start = Math.max(1, method.getStartLine());
+        int end = Math.max(start, method.getEndLine());
+        return Math.max(1, end - start + 1);
+    }
+
+    private String detectLanguageByPath(String filePath) {
+        if (filePath == null || !filePath.contains(".")) {
+            return "plaintext";
+        }
+        String ext = filePath.substring(filePath.lastIndexOf(".") + 1).toLowerCase(Locale.ROOT);
+        return switch (ext) {
+            case "js" -> "javascript";
+            case "ts" -> "typescript";
+            case "jsx", "tsx" -> "jsx";
+            case "py" -> "python";
+            case "java" -> "java";
+            case "go" -> "go";
+            case "rs" -> "rust";
+            case "c", "h" -> "c";
+            case "cpp", "cc", "hpp" -> "cpp";
+            default -> "plaintext";
+        };
+    }
+
+    private boolean isSourceLikeFile(String filePath) {
+        if (filePath == null || !filePath.contains(".")) {
+            return false;
+        }
+        String ext = filePath.substring(filePath.lastIndexOf(".") + 1).toLowerCase(Locale.ROOT);
+        return Set.of(
+                "java", "js", "jsx", "ts", "tsx", "py", "go", "rs", "c", "cc", "cpp", "cxx",
+                "h", "hpp", "cs", "php", "rb", "kt", "swift", "m", "mm", "scala", "sh", "bash", "sql")
+                .contains(ext);
+    }
+
     private List<String> buildEvidence(ModuleStat module, List<KeyCommitDTO> keyCommits) {
         List<String> evidence = new ArrayList<>();
         evidence.add("由共变更聚类生成：聚合了 " + module.fileCount + " 个高关联文件。");
@@ -551,10 +967,17 @@ public class LearningServiceImpl implements LearningService {
         return evidence;
     }
 
-    private List<String> buildLearningSteps(ModuleStat module, List<KeyCommitDTO> keyCommits) {
+    private List<String> buildLearningSteps(ModuleStat module,
+                                            List<KeyCommitDTO> keyCommits,
+                                            List<LearningMethodUnitDTO> methodUnits) {
         List<String> steps = new ArrayList<>();
         String firstFile = module.topFiles.isEmpty() ? "README.md" : module.topFiles.get(0);
         steps.add("先阅读 `" + firstFile + "`，写下模块输入、输出和边界。");
+        if (methodUnits != null && !methodUnits.isEmpty()) {
+            steps.add("进入方法级掌握单元，按顺序学习并完成每个方法的小测验。");
+        } else {
+            steps.add("当前任务未提取到可解析方法（多为文档/配置文件），建议切换到包含源码文件的任务继续方法级学习。");
+        }
 
         for (KeyCommitDTO commit : keyCommits) {
             String hash = commit.getShortHash() == null ? "-" : commit.getShortHash();
@@ -567,8 +990,11 @@ public class LearningServiceImpl implements LearningService {
         return steps;
     }
 
-    private List<String> buildCheckpoints(ModuleStat module) {
+    private List<String> buildCheckpoints(ModuleStat module, List<LearningMethodUnitDTO> methodUnits) {
         List<String> checkpoints = new ArrayList<>();
+        if (methodUnits != null && !methodUnits.isEmpty()) {
+            checkpoints.add("至少通过 1 个方法单元测验，并能解释该方法的职责与边界条件。");
+        }
         checkpoints.add("能用 3 句话解释模块 `" + module.displayName + "` 的职责。");
         checkpoints.add("能指出该模块最近一次‘转折型’变化的原因与影响。");
         checkpoints.add("能说明该模块与上下游模块的关键依赖关系。");
@@ -585,9 +1011,9 @@ public class LearningServiceImpl implements LearningService {
         return "beginner";
     }
 
-    private int estimateMinutes(ModuleStat module) {
-        int minutes = 12 + module.topFiles.size() * 5 + module.fileCount / 2;
-        return Math.max(15, Math.min(45, minutes));
+    private int estimateMinutes(ModuleStat module, int methodUnitCount) {
+        int minutes = 12 + module.topFiles.size() * 5 + module.fileCount / 2 + methodUnitCount * 6;
+        return Math.max(15, Math.min(75, minutes));
     }
 
     private LearningPlanDTO buildEmptyPlan(Repository repo) {
@@ -603,6 +1029,7 @@ public class LearningServiceImpl implements LearningService {
         mission.setFilePaths(List.of("README.md"));
         mission.setRecommendationEvidence(List.of("当前缺少足够提交历史，暂时无法生成高置信度关键提交。"));
         mission.setKeyCommits(List.of());
+        mission.setMethodUnits(List.of());
         mission.setLearningSteps(List.of(
                 "阅读 README，确认项目目标和目录结构。",
                 "找到入口文件并运行一次核心流程。",

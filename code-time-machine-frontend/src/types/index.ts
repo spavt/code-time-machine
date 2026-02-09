@@ -273,6 +273,31 @@ export interface LearningKeyCommit {
   changeTypes?: string[]
 }
 
+export interface LearningQuizQuestion {
+  questionId: string
+  question: string
+  options: string[]
+  correctOptionIndex: number
+  explanation?: string
+}
+
+export interface LearningMethodUnit {
+  unitId: string
+  filePath: string
+  methodName: string
+  methodSignature?: string
+  className?: string
+  startLine?: number
+  endLine?: number
+  parameterCount?: number
+  objective: string
+  importanceReason: string
+  estimatedMinutes: number
+  passThreshold: number
+  learningHints: string[]
+  quizQuestions: LearningQuizQuestion[]
+}
+
 export interface LearningMission {
   missionId: string
   title: string
@@ -285,6 +310,7 @@ export interface LearningMission {
   filePaths: string[]
   recommendationEvidence: string[]
   keyCommits: LearningKeyCommit[]
+  methodUnits: LearningMethodUnit[]
   learningSteps: string[]
   checkpoints: string[]
 }

@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { learningApi } from '@/api'
 import { useRepositoryStore } from '@/stores/repository'
-import type { LearningDifficulty, LearningMission, LearningPlan } from '@/types'
+import type { LearningDifficulty, LearningMethodUnit, LearningMission, LearningPlan } from '@/types'
 
 const router = useRouter()
 const repoStore = useRepositoryStore()
@@ -12,12 +12,25 @@ const repoStore = useRepositoryStore()
 const loading = ref(false)
 const plan = ref<LearningPlan | null>(null)
 const activeMissionId = ref('')
+const selectedAnswers = ref<Record<string, number>>({})
+const unitResults = ref<Record<string, { correct: number; total: number; passed: boolean }>>({})
 
 const activeMission = computed(() => {
   if (!plan.value || !activeMissionId.value) {
     return null
   }
   return plan.value.missions.find(m => m.missionId === activeMissionId.value) || null
+})
+
+const activeMethodUnits = computed(() => activeMission.value?.methodUnits || [])
+
+const completedMethodUnitCount = computed(() =>
+  activeMethodUnits.value.filter(unit => unitResults.value[unit.unitId]?.passed).length
+)
+
+const methodMasteryProgress = computed(() => {
+  if (activeMethodUnits.value.length === 0) return 0
+  return Math.round((completedMethodUnitCount.value / activeMethodUnits.value.length) * 100)
 })
 
 async function loadPlan() {
@@ -28,6 +41,8 @@ async function loadPlan() {
   try {
     const result = await learningApi.getPlan(repoId)
     plan.value = result
+    selectedAnswers.value = {}
+    unitResults.value = {}
     if (!activeMissionId.value || !result.missions.some(m => m.missionId === activeMissionId.value)) {
       activeMissionId.value = result.missions[0]?.missionId || ''
     }
@@ -89,6 +104,81 @@ function formatChangeTypes(types?: string[]) {
     COPY: '复制'
   }
   return types.map(type => labelMap[type] || type).join(' / ')
+}
+
+function answerKey(unitId: string, questionId: string) {
+  return `${unitId}::${questionId}`
+}
+
+function isUnitUnlocked(unitIndex: number) {
+  if (unitIndex <= 0) return true
+  for (let i = 0; i < unitIndex; i++) {
+    const unitId = activeMethodUnits.value[i]?.unitId
+    if (!unitId || !unitResults.value[unitId]?.passed) {
+      return false
+    }
+  }
+  return true
+}
+
+function requiredCorrect(unit: LearningMethodUnit) {
+  const total = unit.quizQuestions.length
+  return Math.max(1, Math.min(unit.passThreshold || total, total))
+}
+
+function submitUnitQuiz(unit: LearningMethodUnit, unitIndex: number) {
+  if (!isUnitUnlocked(unitIndex)) {
+    ElMessage.warning('请先通过前置方法单元')
+    return
+  }
+  if (!unit.quizQuestions || unit.quizQuestions.length === 0) {
+    ElMessage.warning('该方法单元暂无题目')
+    return
+  }
+
+  for (const question of unit.quizQuestions) {
+    const answer = selectedAnswers.value[answerKey(unit.unitId, question.questionId)]
+    if (answer === undefined || answer === null) {
+      ElMessage.warning('请先完成该单元所有题目')
+      return
+    }
+  }
+
+  let correct = 0
+  for (const question of unit.quizQuestions) {
+    const answer = selectedAnswers.value[answerKey(unit.unitId, question.questionId)]
+    if (answer === question.correctOptionIndex) {
+      correct++
+    }
+  }
+
+  const total = unit.quizQuestions.length
+  const passThreshold = requiredCorrect(unit)
+  const passed = correct >= passThreshold
+  unitResults.value[unit.unitId] = { correct, total, passed }
+
+  if (passed) {
+    if (unitIndex < activeMethodUnits.value.length - 1) {
+      ElMessage.success(`通过 ${correct}/${total}，已解锁下一个方法单元`)
+    } else {
+      ElMessage.success(`通过 ${correct}/${total}，当前任务方法掌握完成`)
+    }
+    return
+  }
+
+  ElMessage.warning(`当前 ${correct}/${total}，需要至少答对 ${passThreshold} 题`)
+}
+
+function unitResult(unitId: string) {
+  return unitResults.value[unitId]
+}
+
+function formatMethodMeta(unit: LearningMethodUnit) {
+  const lineText = unit.startLine && unit.endLine
+    ? `L${unit.startLine}-L${unit.endLine}`
+    : '行号未知'
+  const params = unit.parameterCount ?? 0
+  return `${lineText} · 参数 ${params} 个 · ${unit.estimatedMinutes} 分钟`
 }
 
 onMounted(loadPlan)
@@ -191,6 +281,79 @@ watch(() => repoStore.currentRepo?.id, () => {
                   <el-button size="small" text @click="openCommit(commit.shortHash)">去提交页</el-button>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div class="detail-block" v-if="activeMission.methodUnits && activeMission.methodUnits.length > 0">
+            <div class="mastery-header">
+              <h5>方法级掌握</h5>
+              <span class="mastery-progress-text">
+                {{ completedMethodUnitCount }}/{{ activeMission.methodUnits.length }} 已通过
+              </span>
+            </div>
+            <el-progress :percentage="methodMasteryProgress" :stroke-width="10" />
+
+            <div class="mastery-unit-list">
+              <div
+                v-for="(unit, index) in activeMission.methodUnits"
+                :key="unit.unitId"
+                class="mastery-unit"
+                :class="{ locked: !isUnitUnlocked(index), passed: unitResult(unit.unitId)?.passed }"
+              >
+                <div class="mastery-unit-header">
+                  <div class="mastery-unit-headline">
+                    <p class="mastery-unit-title">{{ unit.methodName }}()</p>
+                    <p class="mastery-unit-file">{{ unit.filePath }}</p>
+                    <p class="mastery-unit-meta">{{ formatMethodMeta(unit) }}</p>
+                  </div>
+                  <el-tag
+                    size="small"
+                    :type="unitResult(unit.unitId)?.passed ? 'success' : (isUnitUnlocked(index) ? 'info' : 'warning')"
+                  >
+                    {{ unitResult(unit.unitId)?.passed ? '已通过' : (isUnitUnlocked(index) ? '待作答' : '已锁定') }}
+                  </el-tag>
+                </div>
+
+                <p class="mastery-objective">{{ unit.objective }}</p>
+                <p class="mastery-reason">{{ unit.importanceReason }}</p>
+                <ul class="mastery-hints">
+                  <li v-for="hint in unit.learningHints" :key="hint">{{ hint }}</li>
+                </ul>
+
+                <div v-if="isUnitUnlocked(index)" class="mastery-quiz">
+                  <div v-for="question in unit.quizQuestions" :key="question.questionId" class="quiz-question">
+                    <p class="quiz-title">{{ question.question }}</p>
+                    <el-radio-group v-model="selectedAnswers[answerKey(unit.unitId, question.questionId)]">
+                      <el-radio
+                        v-for="(option, optionIndex) in question.options"
+                        :key="`${question.questionId}-${option}`"
+                        :value="optionIndex"
+                      >
+                        {{ option }}
+                      </el-radio>
+                    </el-radio-group>
+                    <p v-if="unitResult(unit.unitId)" class="quiz-explain">{{ question.explanation }}</p>
+                  </div>
+
+                  <div class="quiz-footer">
+                    <span v-if="unitResult(unit.unitId)" class="quiz-result">
+                      得分 {{ unitResult(unit.unitId)?.correct }}/{{ unitResult(unit.unitId)?.total }}，
+                      通过线 {{ requiredCorrect(unit) }}
+                    </span>
+                    <el-button size="small" type="primary" @click="submitUnitQuiz(unit, index)">
+                      提交本单元测验
+                    </el-button>
+                  </div>
+                </div>
+
+                <p v-else class="unit-locked-tip">先通过上一个方法单元后再解锁。</p>
+              </div>
+            </div>
+          </div>
+          <div class="detail-block" v-else>
+            <h5>方法级掌握</h5>
+            <div class="method-empty">
+              当前任务核心文件以文档/配置为主，暂未提取到可测验的方法单元。建议切换到源码文件更多的任务或仓库继续。
             </div>
           </div>
 
@@ -438,6 +601,131 @@ watch(() => repoStore.currentRepo?.id, () => {
   font-size: 0.75rem;
   color: var(--text-secondary);
   font-family: var(--font-mono);
+}
+
+.mastery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.mastery-progress-text {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.mastery-unit-list {
+  display: grid;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.mastery-unit {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.mastery-unit.locked {
+  opacity: 0.78;
+}
+
+.mastery-unit.passed {
+  border-color: var(--color-success);
+}
+
+.mastery-unit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.mastery-unit-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.mastery-unit-file {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+
+.mastery-unit-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.mastery-objective {
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.mastery-reason {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.mastery-hints {
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 2px;
+  margin-bottom: var(--spacing-sm);
+  color: var(--text-secondary);
+}
+
+.mastery-quiz {
+  border-top: 1px dashed var(--border-color);
+  padding-top: var(--spacing-sm);
+}
+
+.quiz-question {
+  margin-bottom: var(--spacing-sm);
+}
+
+.quiz-title {
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.quiz-explain {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.quiz-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.quiz-result {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.unit-locked-tip {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.method-empty {
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: 0.88rem;
 }
 
 .evidence-list {
