@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
 import { useTheme } from '@/composables/useTheme'
@@ -14,12 +14,38 @@ const activeTab = ref('overview')
 
 const repoId = computed(() => Number(route.params.id))
 
+function syncActiveTabFromRoute() {
+  const path = route.path
+  if (path.endsWith('/timeline')) {
+    activeTab.value = 'timeline'
+    return
+  }
+  if (path.endsWith('/commits')) {
+    activeTab.value = 'commits'
+    return
+  }
+  if (path.endsWith('/stats')) {
+    activeTab.value = 'stats'
+    return
+  }
+  if (path.endsWith('/learning')) {
+    activeTab.value = 'learning'
+    return
+  }
+  activeTab.value = 'overview'
+}
+
 onMounted(async () => {
   try {
+    syncActiveTabFromRoute()
     await repoStore.fetchRepoDetail(repoId.value)
   } finally {
     loading.value = false
   }
+})
+
+watch(() => route.path, () => {
+  syncActiveTabFromRoute()
 })
 
 function goToTimeline() {
@@ -117,6 +143,11 @@ function handleTabChange(tab: string) {
           <el-tab-pane label="统计" name="stats">
             <template #label>
               <span class="tab-label"><el-icon><TrendCharts /></el-icon> 统计</span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane label="学习模式" name="learning">
+            <template #label>
+              <span class="tab-label"><el-icon><Reading /></el-icon> 学习模式</span>
             </template>
           </el-tab-pane>
         </el-tabs>

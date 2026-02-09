@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
 import { ChangeCategoryMap, ChangeTypeMap, type ChangeCategory, type ChangeType } from '@/types'
 
 const repoStore = useRepositoryStore()
+const route = useRoute()
 
 const searchKeyword = ref('')
 const selectedCategory = ref<ChangeCategory | ''>('')
@@ -49,6 +51,13 @@ const totalPages = computed(() => Math.ceil(filteredCommits.value.length / pageS
 
 const selectedCommit = ref<number | null>(null)
 
+function syncKeywordFromRoute() {
+  const queryKeyword = typeof route.query.keyword === 'string' ? route.query.keyword : ''
+  if (queryKeyword) {
+    searchKeyword.value = queryKeyword
+  }
+}
+
 function selectCommit(commitId: number) {
   selectedCommit.value = selectedCommit.value === commitId ? null : commitId
   const commit = repoStore.commits.find(c => c.id === commitId)
@@ -76,6 +85,11 @@ function formatTime(dateStr: string) {
     minute: '2-digit'
   })
 }
+
+onMounted(syncKeywordFromRoute)
+watch(() => route.query.keyword, () => {
+  syncKeywordFromRoute()
+})
 </script>
 
 <template>

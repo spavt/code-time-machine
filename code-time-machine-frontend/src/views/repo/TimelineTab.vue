@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useVirtualList } from '@vueuse/core'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useRepositoryStore } from '@/stores/repository'
 import { fileApi, commitApi } from '@/api'
 import { ChangeTypeMap, ChangeCategoryMap, type ChangeType, type AiAnalysis, type ChangeCategory } from '@/types'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const repoStore = useRepositoryStore()
 
 const selectedFile = ref('')
@@ -46,10 +47,15 @@ onMounted(async () => {
     try {
       const tree = await fileApi.getFileTree(repoStore.currentRepo.id)
       fileList.value = flattenTree(tree)
+      applyRouteSelectedFile()
     } catch (e) {
       console.error(e)
     }
   }
+})
+
+watch(() => route.query.file, () => {
+  applyRouteSelectedFile()
 })
 
 function flattenTree(nodes: any[], prefix = ''): Array<{ path: string; modifyCount: number }> {
@@ -64,6 +70,17 @@ function flattenTree(nodes: any[], prefix = ''): Array<{ path: string; modifyCou
     }
   }
   return result.sort((a, b) => b.modifyCount - a.modifyCount)
+}
+
+function applyRouteSelectedFile() {
+  const queryFile = typeof route.query.file === 'string' ? route.query.file : ''
+  if (!queryFile || fileList.value.length === 0) {
+    return
+  }
+  const exists = fileList.value.some(item => item.path === queryFile)
+  if (exists) {
+    selectedFile.value = queryFile
+  }
 }
 
 function goToPlayer() {
@@ -285,7 +302,54 @@ function renderStars(score: number | undefined, max: number = 10): string {
                     <span class="ai-trigger-text">
                       {{ isAnalysisLoading(commit.id) ? '分析中...' : 'AI 分析' }}
                     </span>
+                    <el-icon class="ai-trigger-arrow" :class="{ 'is-expanded': isAnalysisExpanded(commit.id) }">
+                      <ArrowDown />
+                    </el-icon>
                   </div>
+
+                  <transition name="slide-fade">
+                    <div v-if="isAnalysisExpanded(commit.id) && getAnalysis(commit.id)" class="ai-analysis-content">
+                      <div class="analysis-item" v-if="getAnalysis(commit.id)?.summary">
+                        <span class="analysis-label">📝 摘要</span>
+                        <p class="analysis-text">{{ getAnalysis(commit.id)?.summary }}</p>
+                      </div>
+                      
+                      <div class="analysis-item" v-if="getAnalysis(commit.id)?.purpose">
+                        <span class="analysis-label">🎯 目的</span>
+                        <p class="analysis-text">{{ getAnalysis(commit.id)?.purpose }}</p>
+                      </div>
+                      
+                      <div class="analysis-item" v-if="getAnalysis(commit.id)?.impact">
+                        <span class="analysis-label">⚡ 影响</span>
+                        <p class="analysis-text">{{ getAnalysis(commit.id)?.impact }}</p>
+                      </div>
+
+                      <div class="analysis-footer">
+                        <span 
+                          v-if="getCategoryInfo(getAnalysis(commit.id)?.changeCategory)"
+                          class="category-tag"
+                          :style="{ 
+                            background: getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.color + '20',
+                            color: getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.color,
+                            borderColor: getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.color
+                          }"
+                        >
+                          {{ getCategoryInfo(getAnalysis(commit.id)?.changeCategory)?.label }}
+                        </span>
+
+                        <div class="analysis-scores" v-if="getAnalysis(commit.id)?.complexityScore || getAnalysis(commit.id)?.importanceScore">
+                          <span class="score-item" v-if="getAnalysis(commit.id)?.complexityScore">
+                            <span class="score-label">复杂度</span>
+                            <span class="score-stars">{{ renderStars(getAnalysis(commit.id)?.complexityScore) }}</span>
+                          </span>
+                          <span class="score-item" v-if="getAnalysis(commit.id)?.importanceScore">
+                            <span class="score-label">重要性</span>
+                            <span class="score-stars">{{ renderStars(getAnalysis(commit.id)?.importanceScore) }}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </transition>
                 </div>
               </div>
             </div>

@@ -67,6 +67,14 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '统计分析'
         }
+      },
+      {
+        path: 'learning',
+        name: 'RepoLearning',
+        component: () => import('@/views/repo/LearningTab.vue'),
+        meta: {
+          title: '学习模式'
+        }
       }
     ]
   },

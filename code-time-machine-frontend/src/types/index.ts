@@ -254,3 +254,46 @@ export interface SearchFilter {
   changeCategories?: ChangeCategory[]
   filePath?: string
 }
+
+export type LearningDifficulty = 'beginner' | 'intermediate' | 'advanced'
+
+export interface LearningKeyCommit {
+  commitId: number
+  commitOrder?: number
+  shortHash: string
+  commitMessage: string
+  authorName: string
+  commitTime: string
+  phase?: string
+  focusReason?: string
+  touchedFiles: number
+  additions?: number
+  deletions?: number
+  hitFiles?: string[]
+  changeTypes?: string[]
+}
+
+export interface LearningMission {
+  missionId: string
+  title: string
+  module: string
+  objective: string
+  importanceReason: string
+  difficulty: LearningDifficulty
+  estimatedMinutes: number
+  hotScore: number
+  filePaths: string[]
+  recommendationEvidence: string[]
+  keyCommits: LearningKeyCommit[]
+  learningSteps: string[]
+  checkpoints: string[]
+}
+
+export interface LearningPlan {
+  repoId: number
+  repoName: string
+  totalMissions: number
+  estimatedTotalMinutes: number
+  missions: LearningMission[]
+  globalSuggestions: string[]
+}

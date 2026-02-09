@@ -10,7 +10,8 @@ import type {
   ApiResponse,
   PageResult,
   ContributorStats,
-  SearchFilter
+  SearchFilter,
+  LearningPlan
 } from '@/types'
 
 const api: AxiosInstance = axios.create({
@@ -399,6 +400,12 @@ export const userApi = {
     language: string
   }>> {
     return api.get('/user/recommended-repos', { params: { level } })
+  }
+}
+
+export const learningApi = {
+  getPlan(repoId: number): Promise<LearningPlan> {
+    return api.get(`/learning/plan/${repoId}`, { timeout: 120000 })
   }
 }
 
